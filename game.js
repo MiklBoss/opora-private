@@ -19,6 +19,7 @@ export function resetGame(state, mode, updatedAt) {
   const erase = record => record.deleted ? record : { id: record.id, deleted: true, updatedAt };
   return { ...state,
     awards: state.awards.map(a => mode === 'all' ? erase(a) : a.deleted ? a : { ...a, coins: 0, gold: 0, updatedAt }),
+    routineChecks: (state.routineChecks || []).map(c => c.deleted ? c : { ...c, coinsEligible: false, ...(mode === 'all' ? { xpEligible: false } : {}), updatedAt }),
     purchases: state.purchases.map(erase)
   };
 }
@@ -31,8 +32,18 @@ export function earnedAwards(state) {
 }
 export function gameTotals(state) {
   const totals = earnedAwards(state).reduce((sum, award) => ({ xp: sum.xp + award.xp, coins: sum.coins + award.coins, gold: sum.gold + award.gold }), { xp: 0, coins: 0, gold: 0 });
+  const routines = routineTotals(state); totals.xp += routines.xp; totals.coins += routines.coins;
   for (const purchase of active(state.purchases)) totals[purchase.currency] -= purchase.cost;
   return { ...totals, level: Math.floor(totals.xp / 100) + 1, progress: totals.xp % 100, next: 100 - totals.xp % 100 };
+}
+export function routineStats(state, routineId) {
+  const checks = active(state.routineChecks || []).filter(c => c.routineId === routineId && c.done);
+  const paid = checks.filter(c => c.coinsEligible).length;
+  return { count: checks.length, xp: checks.filter(c => c.xpEligible).length * 5, coins: Math.floor(paid / 3), progress: paid % 3 };
+}
+export function routineTotals(state) {
+  const ids = new Set(active(state.routineChecks || []).map(c => c.routineId));
+  return [...ids].reduce((sum, id) => { const stats = routineStats(state, id); return { xp: sum.xp + stats.xp, coins: sum.coins + stats.coins }; }, { xp: 0, coins: 0 });
 }
 export function purchaseWish(state, wishId, id, updatedAt) {
   const wish = active(state.wishes).find(w => w.id === wishId);

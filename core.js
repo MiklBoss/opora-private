@@ -1,6 +1,6 @@
-export const COLLECTIONS = ['tasks', 'goals', 'ideas', 'days', 'awards', 'wishes', 'purchases'];
+export const COLLECTIONS = ['tasks', 'goals', 'ideas', 'days', 'awards', 'wishes', 'purchases', 'routines', 'routineChecks'];
 export const LEVELS = ['strategy', 'quarter', 'month', 'week', 'project'];
-export function emptyState() { return { version: 2, tasks: [], goals: [], ideas: [], days: [], awards: [], wishes: [], purchases: [] }; }
+export function emptyState() { return { version: 3, tasks: [], goals: [], ideas: [], days: [], awards: [], wishes: [], purchases: [], routines: [], routineChecks: [] }; }
 export function dateKey(date = new Date()) {
   return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
 }
@@ -64,15 +64,15 @@ export function periodOverlaps(value, start, end) {
   return !!period && period.start <= end && period.end >= start;
 }
 export function validateState(input) {
-  if (!input || ![1, 2].includes(input.version)) throw new Error('Это не резервная копия Опоры поддерживаемой версии.');
+  if (!input || ![1, 2, 3].includes(input.version)) throw new Error('Это не резервная копия Опоры поддерживаемой версии.');
   const result = emptyState();
   const string = (v, limit) => typeof v === 'string' && v.length <= limit;
   for (const collection of COLLECTIONS) {
-    const records = input[collection] ?? (input.version === 1 && ['awards', 'wishes', 'purchases'].includes(collection) ? [] : undefined);
+    const records = input[collection] ?? ((input.version === 1 && ['awards', 'wishes', 'purchases'].includes(collection)) || (input.version < 3 && ['routines', 'routineChecks'].includes(collection)) ? [] : undefined);
     if (!Array.isArray(records) || records.length > 10000) throw new Error('Неверный формат или слишком много записей.');
     const ids = new Set();
     result[collection] = records.map(record => {
-      if (!record || !string(record.id, collection === 'awards' ? 110 : 100) || !/^[a-zA-Z0-9_.:-]+$/.test(record.id) || ids.has(record.id) || !string(record.updatedAt, 40) || !Number.isFinite(Date.parse(record.updatedAt))) throw new Error('В копии есть повреждённые записи.');
+      if (!record || !string(record.id, collection === 'routineChecks' ? 111 : collection === 'awards' ? 110 : 100) || !/^[a-zA-Z0-9_.:-]+$/.test(record.id) || ids.has(record.id) || !string(record.updatedAt, 40) || !Number.isFinite(Date.parse(record.updatedAt))) throw new Error('В копии есть повреждённые записи.');
       ids.add(record.id);
       const base = { id: record.id, updatedAt: record.updatedAt, deleted: record.deleted === true };
       if (base.deleted) return base;
@@ -82,6 +82,14 @@ export function validateState(input) {
       }
       if (!string(record.title, 500) || !record.title.trim() || !string(record.notes || '', 5000)) throw new Error('Неверный формат текста записи.');
       const text = { ...base, title: record.title, notes: record.notes || '' };
+      if (collection === 'routines') {
+        if (typeof record.paused !== 'boolean' || !validDate(record.createdDate)) throw new Error('Неверный формат ежедневной рутины.');
+        return { ...text, paused: record.paused, createdDate: record.createdDate };
+      }
+      if (collection === 'routineChecks') {
+        if (!string(record.routineId, 100) || !/^[a-zA-Z0-9_.:-]+$/.test(record.routineId) || !validDate(record.date) || record.id !== `${record.routineId}.${record.date}` || !['done', 'xpEligible', 'coinsEligible'].every(k => typeof record[k] === 'boolean')) throw new Error('Неверный формат отметки рутины.');
+        return { ...text, routineId: record.routineId, date: record.date, done: record.done, xpEligible: record.xpEligible, coinsEligible: record.coinsEligible };
+      }
       if (collection === 'awards') {
         if (!['tasks', 'goals'].includes(record.sourceType) || !string(record.sourceId, 100) || record.id !== `${record.sourceType}.${record.sourceId}` || !/^[a-zA-Z0-9_.:-]+$/.test(record.sourceId) || typeof record.earned !== 'boolean' || !['xp', 'coins', 'gold'].every(k => Number.isSafeInteger(record[k]) && record[k] >= 0 && record[k] <= 1000)) throw new Error('Неверный формат игровой награды.');
         return { ...text, sourceType: record.sourceType, sourceId: record.sourceId, earned: record.earned, xp: record.xp, coins: record.coins, gold: record.gold };

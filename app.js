@@ -1,5 +1,5 @@
 import { emptyState, dateKey, shiftDate, validDate, validateState, mergeStates, active, encodeState, decodeState, LEVELS, planningPeriod, parsePlanningPeriod, planningPeriodRange, calendarPeriod, parseCalendarPeriod, calendarPeriodLabel, periodOverlaps, COLLECTIONS } from './core.js';
-import { updateAward, gameTotals, rewardFor, purchaseWish, earnedAwards, resetGame } from './game.js';
+import { updateAward, gameTotals, rewardFor, purchaseWish, earnedAwards, resetGame, routineStats } from './game.js';
 
 const KEY = 'opora.data.v1', CONFIG = 'opora.github.v1', TIMER = 'opora.timer.v1';
 const app = document.querySelector('#app'), dialog = document.querySelector('#dialog');
@@ -101,6 +101,40 @@ function render() {
     <div class="content">${storageFailed ? '<div class="warning">Не удалось прочитать или сохранить данные. Скачайте копию в настройках. Исходные данные в браузере не перезаписываются.</div>' : ''}${localStorage.getItem('opora.example') ? `<div class="demo-banner"><span>${icon('book')} Это пример. Отредактируйте планы или начните со своих.</span>${button('clear-example', 'Убрать пример', '', 'text-button')}</div>` : ''}${page === 'day' ? renderDay() : page === 'inbox' ? renderIdeas() : renderGoals(page === 'plans' ? planLevel : page)}</div><footer class="page-footer"><span>Меньше шума. Больше смысла.</span><span>Опора <span class="footer-dot">·</span> шаг за шагом</span></footer></main>`;
   updateSaved(); updateTimer();
 }
+let routinesOpen = false;
+try { routinesOpen = localStorage.getItem('opora.routines.open') === 'true'; } catch { /* Keep local preference optional. */ }
+function routinePanel() {
+  const routines = visible('routines').filter(r => r.createdDate <= selectedDate);
+  const checks = new Map(visible('routineChecks').filter(c => c.date === selectedDate).map(c => [c.routineId, c]));
+  const running = routines.filter(r => !r.paused || checks.get(r.id)?.done), completed = running.filter(r => checks.get(r.id)?.done).length;
+  return `<details id="routine-panel" class="routine-panel" ${routinesOpen ? 'open' : ''}><summary data-action="toggle-routine-panel">${icon('leaf')} Ежедневная рутина <span class="number-badge">${completed} / ${running.length}</span></summary><div class="routine-body"><p class="muted">Маленькие шаги без гонки. 5 XP за выполнение, 1 монета за каждые 3 выполнения одной привычки. Пропуски не обнуляют прогресс.</p><div class="button-row">${button('new-routine', 'Добавить привычку', 'plus', 'btn btn-light')}${button('routine-history', 'История', 'day', 'text-button')}</div>${routines.length ? routines.map(r => {
+    const done = checks.get(r.id)?.done, stats = routineStats(state, r.id);
+    return `<article class="routine-row ${done ? 'done' : ''} ${r.paused ? 'paused' : ''}"><button class="task-check ${done ? 'checked' : ''}" data-action="toggle-routine" data-id="${r.id}" aria-label="${done ? 'Вернуть' : 'Выполнить'} привычку: ${esc(r.title)}" aria-pressed="${!!done}" ${(r.paused && !done) || selectedDate > dateKey() ? 'disabled' : ''}>${done ? icon('check') : ''}</button><button class="routine-title" data-action="edit-routine" data-id="${r.id}"><strong>${esc(r.title)}</strong><small>${r.paused ? 'На паузе · ' : ''}${stats.count} выполнений · до монеты ${3 - stats.progress}${done ? ' · сделано' : ''}</small></button>${button('pause-routine', '', r.paused ? 'play' : 'pause', 'icon-button', `data-id="${r.id}" aria-label="${r.paused ? 'Продолжить' : 'Приостановить'} привычку: ${esc(r.title)}"`)}</article>`;
+  }).join('') : '<p class="empty-inline">Например: прочитать 5 страниц или уделить языку 10 минут. Начните с одной привычки.</p>'}${selectedDate > dateKey() ? '<p class="muted">Будущие выполнения можно отмечать, когда этот день наступит.</p>' : ''}</div></details>`;
+}
+function routineDialog(record = {}) {
+  openDialog(record.id ? 'Ваша привычка' : 'Новая ежедневная привычка', `<input type="hidden" name="id" value="${record.id || ''}">${textField('title', 'Небольшое конкретное действие', record.title, 'Прочитать 5 страниц')}${notesField(record.notes)}<p class="muted">Каждый день — новая отметка. Награда: 5 XP и 1 обычная монета за каждые 3 выполнения этой привычки, с перерывами или подряд.</p>`, 'routine-form', 'Сохранить', record.id ? button('delete', 'Удалить привычку', 'trash', 'text-button danger', `data-id="${record.id}" data-collection="routines"`) : '');
+}
+function routineHistoryDialog() {
+  const checks = visible('routineChecks').filter(c => c.done).sort((a, b) => b.date.localeCompare(a.date) || a.title.localeCompare(b.title));
+  openDialog('История рутины', `<p class="dialog-intro">Всего выполнений: ${checks.length}. История сохраняется при паузе и удалении привычки. Для исправления отметки откройте её день.</p>${checks.length ? checks.slice(0, 90).map(c => `<div class="routine-history-row"><div><strong>${esc(c.title)}</strong><small>${esc(dateLabel(c.date))} ${c.date.slice(0, 4)} · ${c.xpEligible ? '5 XP' : 'награда сброшена'}</small></div>${visible('routines').some(r => r.id === c.routineId) ? button('routine-date', 'К этому дню', '', 'text-button', `data-date="${c.date}"`) : '<small class="muted">Привычка удалена</small>'}</div>`).join('') : '<p class="muted">Здесь появятся ваши выполненные шаги.</p>'}${checks.length > 90 ? '<p class="muted">Показаны последние 90 отметок. Более ранние сохранены в данных и доступны через выбор даты в плане.</p>' : ''}`);
+}
+function toggleRoutine(id) {
+  const routine = visible('routines').find(r => r.id === id);
+  if (!routine || selectedDate > dateKey()) return;
+  const key = `${id}.${selectedDate}`, old = visible('routineChecks').find(c => c.id === key);
+  if (routine.paused && !old?.done) return;
+  const before = gameTotals(state);
+  put('routineChecks', { id: key, routineId: id, title: routine.title, notes: '', date: selectedDate, done: !old?.done, xpEligible: old?.xpEligible ?? true, coinsEligible: old?.coinsEligible ?? true });
+  render();
+  if (gameTotals(state).xp !== before.xp) announceReward(before); else toast('Отметка рутины сохранена.');
+}
+document.addEventListener('toggle', event => {
+  if (event.target.id !== 'routine-panel' || !event.target.isConnected) return;
+  routinesOpen = event.target.open;
+  try { localStorage.setItem('opora.routines.open', String(routinesOpen)); } catch { /* Optional display preference. */ }
+}, true);
+
 function renderDay() {
   const today = dateKey(), record = day(), tasks = visible('tasks').filter(t => t.date === selectedDate), roots = tasks.filter(t => !tasks.some(p => p.id === t.parentTaskId)), completed = tasks.filter(t => t.done).length;
   const shown = record.closed ? roots.filter(t => !t.done) : roots;
@@ -115,7 +149,7 @@ function renderDay() {
     }).join('')}</div><div class="date-controls">${button('previous-day', '', 'back', 'icon-button', 'aria-label="Предыдущий день"')}${button('today', 'Сегодня', '', 'btn btn-small btn-light')}${button('next-day', '', 'chevron', 'icon-button', 'aria-label="Следующий день"')}<label class="date-picker" title="Выбрать дату">${icon('day')}<input type="date" id="date-picker" value="${selectedDate}" aria-label="Выбрать дату"></label></div></div>
     <div class="day-grid"><div class="day-main">${record.closed ? '' : `<div class="day-start-entry">${button('start-day', selectedDate === today ? 'Начать мой день' : 'Подготовить этот день', 'sun', 'btn btn-light')}<span>Выбрать главное и первый шаг</span></div>`}${heroCard()}<section class="focus-card"><div class="focus-top"><span class="small-label">${icon('focus')} ФОКУС ДНЯ</span><span class="focus-tag">Одно самое важное</span></div><label class="sr-only" for="day-focus">Фокус дня</label><textarea id="day-focus" rows="2" maxlength="500" placeholder="Что сделает этот день не напрасным?">${esc(record.focus)}</textarea><div class="focus-bottom"><span>${icon('leaf')} Выберите результат, а не список дел</span>${button('focus-mode', 'Сосредоточиться', 'arrow', 'focus-enter')}</div><svg class="focus-decoration" viewBox="0 0 180 180" aria-hidden="true"><g fill="none" stroke="currentColor"><circle cx="130" cy="130" r="95"/><circle cx="130" cy="130" r="72"/><circle cx="130" cy="130" r="49"/><path d="M35 130h190M130 35v190"/></g></svg></section>
     <section class="task-section"><div class="section-heading"><h2>${icon('flame')} Горячие задачи <span class="number-badge">${hot.filter(t => !t.done).length}</span></h2><span class="section-caption">До 3 главных — уже достаточно</span></div>${hot.length ? `<div class="task-list hot-list">${hot.map(t => taskRow(t, { hideCompleted: record.closed })).join('')}</div>` : '<div class="empty-inline">Выберите задачи, которые требуют внимания сегодня.</div>'}</section>
-    <section class="task-section"><div class="section-heading"><h2>Остальные задачи <span class="number-badge">${ordinary.filter(t => !t.done).length}</span></h2>${button('new-task', 'Добавить', 'plus', 'text-button')}</div>${ordinary.length ? `<div class="task-list">${ordinary.map(t => taskRow(t, { hideCompleted: record.closed })).join('')}</div>` : '<div class="empty-inline">Здесь может быть пусто. Оставьте место для жизни.</div>'}<form id="quick-task" class="quick-add">${icon('plus')}<input name="title" maxlength="500" placeholder="Небольшой следующий шаг…" aria-label="Новая задача" required autocomplete="off"><button type="submit" class="quick-submit" aria-label="Добавить задачу">${icon('arrow')}</button></form></section>
+    ${routinePanel()}<section class="task-section"><div class="section-heading"><h2>Остальные задачи <span class="number-badge">${ordinary.filter(t => !t.done).length}</span></h2>${button('new-task', 'Добавить', 'plus', 'text-button')}</div>${ordinary.length ? `<div class="task-list">${ordinary.map(t => taskRow(t, { hideCompleted: record.closed })).join('')}</div>` : '<div class="empty-inline">Здесь может быть пусто. Оставьте место для жизни.</div>'}<form id="quick-task" class="quick-add">${icon('plus')}<input name="title" maxlength="500" placeholder="Небольшой следующий шаг…" aria-label="Новая задача" required autocomplete="off"><button type="submit" class="quick-submit" aria-label="Добавить задачу">${icon('arrow')}</button></form></section>
     ${record.closed && done.length ? `<details class="completed-section"><summary>${icon('check')} Выполненные задачи · архив <span>${completed}</span></summary><div class="task-list">${done.map(taskRow).join('')}</div></details>` : ''}
     ${overduePanel()}${datedPlansPanel()}
     <section class="review-card"><div class="section-heading"><h2>${icon('moon')} Закрыть день</h2><span class="section-caption">Без оценок. С заботой о себе.</span></div><label for="day-review">Что получилось? Что хочется взять в завтра?</label><textarea id="day-review" rows="2" maxlength="5000" placeholder="Даже маленький шаг — это движение вперёд.">${esc(record.review)}</textarea>${dayClosureControls(record)}</section>
@@ -234,7 +268,7 @@ function shopDialog() {
   }).join('')}</div>` : `<div class="empty-inline">Что порадует вас после сделанных дел? Добавьте свои награды или начните с примеров.<div class="button-row">${button('wish-examples', 'Добавить примеры', '', 'btn btn-light')}</div></div>`}<details class="game-rules"><summary>Как зарабатывать XP и монеты</summary><p>Небольшая задача: 10 XP и 1 монета. Цель или проект при 100%: 50 XP и 5 монет. Размер шага умножает награду на 1, 3 или 5. Для дел с доходом начисляются золотые монеты. Награда закрепляется при первом выполнении; снятие отметки убирает её, повторное выполнение возвращает ту же награду. Каждые 100 XP — новый уровень.</p><p>Монеты игровые. Вы сами организуете выбранную радость в жизни и отмечаете, когда получили её. Старые выполненные дела и демонстрационные примеры автоматически монеты не получают.</p></details><div class="detail-heading"><h3>Купленные радости</h3><span>${purchases.length}</span></div>${purchases.length ? purchases.map(p => `<article class="purchase-row"><div><strong>${esc(p.title)}</strong><small>${p.cost} ${p.currency === 'gold' ? 'золотых' : 'монет'} · ${p.fulfilled ? 'Радость получена' : 'Можно получить'}</small></div>${p.fulfilled ? icon('check') : `<div>${button('claim-purchase', 'Получено', 'check', 'text-button', `data-id="${p.id}"`)}${button('refund-purchase', 'Отменить покупку', '', 'text-button', `data-id="${p.id}"`)}</div>`}</article>`).join('') : '<p class="muted">Здесь появятся купленные желания.</p>'}<details class="game-rules"><summary>Заслуженные награды</summary>${awards.length ? awards.map(a => `<p class="award-row"><span>${esc(a.title)}</span><b>+${a.xp} XP · ${a.gold ? `${a.gold} золотых` : `${a.coins} монет`}</b></p>`).join('') : '<p>Следующий выполненный шаг принесёт первую награду.</p>'}</details><div class="button-row">${button('reset-game', 'Сбросить пробные награды', 'reset', 'text-button danger')}</div>`);
 }
 function resetGameDialog() {
-  openDialog('Сбросить пробные награды', `<p class="dialog-intro">Задачи, планы, мысли и банк желаний сохранятся.</p><label class="field">Что обнулить?<select name="mode"><option value="coins">Только монеты — XP и уровень сохранить</option><option value="all">Всю игру — монеты, XP и уровень</option></select></label><p class="muted">В обоих вариантах обычные и золотые монеты станут нулевыми, история покупок очистится. При полном сбросе уровень станет первым, история наград очистится. Изменение уже выполненных задач не вернёт старые награды.</p><p class="settings-help">Для телефона и ПК: синхронизируйтесь перед сбросом, затем отправьте изменения через синхронизацию и получите их на втором устройстве.</p><div class="button-row">${button('export', 'Скачать копию перед сбросом', 'download', 'btn btn-light')}</div>`, 'game-reset-form', 'Обнулить');
+  openDialog('Сбросить пробные награды', `<p class="dialog-intro">Задачи, планы, мысли и банк желаний сохранятся.</p><label class="field">Что обнулить?<select name="mode"><option value="coins">Только монеты — XP и уровень сохранить</option><option value="all">Всю игру — монеты, XP и уровень</option></select></label><p class="muted">В обоих вариантах обычные и золотые монеты станут нулевыми, история покупок очистится. При полном сбросе уровень станет первым, история наград очистится. Изменение уже выполненных задач не вернёт старые награды. Награды рутины тоже сбросятся, её отметки и история останутся.</p><p class="settings-help">Для телефона и ПК: синхронизируйтесь перед сбросом, затем отправьте изменения через синхронизацию и получите их на втором устройстве.</p><div class="button-row">${button('export', 'Скачать копию перед сбросом', 'download', 'btn btn-light')}</div>`, 'game-reset-form', 'Обнулить');
 }
 function wishDialog(record = {}) {
   openDialog(record.id ? 'Редактировать желание' : 'Новое желание', `<input type="hidden" name="id" value="${record.id || ''}">${textField('title', 'Что порадует вас?', record.title, 'Например: прогулка, десерт, новая книга')}<div class="form-columns"><label class="field">Цена в игровых монетах<input name="cost" type="number" min="1" max="1000000" step="1" value="${record.cost || 5}" required></label><label class="field">Валюта<select name="currency"><option value="coins" ${record.currency !== 'gold' ? 'selected' : ''}>Обычные монеты</option><option value="gold" ${record.currency === 'gold' ? 'selected' : ''}>Золотые монеты</option></select></label></div>${notesField(record.notes)}<label class="checkbox-label"><input name="repeatable" type="checkbox" ${record.repeatable !== false ? 'checked' : ''}>Можно покупать повторно</label>`, 'wish-form', 'Сохранить желание', record.id ? button('delete', 'Удалить', 'trash', 'text-button danger', `data-id="${record.id}" data-collection="wishes"`) : '');
@@ -385,6 +419,16 @@ function handleAction(event) {
     document.documentElement.dataset.theme = theme; localStorage.setItem('opora.theme', theme);
     document.querySelector('meta[name="theme-color"]').content = theme === 'dark' ? '#101c1d' : '#314d40'; render();
   }
+  else if (action === 'toggle-routine-panel') {
+    const panel = document.querySelector('#routine-panel'); routinesOpen = !panel.open; panel.open = routinesOpen;
+    try { localStorage.setItem('opora.routines.open', String(routinesOpen)); } catch { /* Display preference. */ }
+  }
+  else if (action === 'new-routine') routineDialog();
+  else if (action === 'edit-routine') routineDialog(visible('routines').find(r => r.id === id));
+  else if (action === 'toggle-routine') toggleRoutine(id);
+  else if (action === 'pause-routine') { const r = visible('routines').find(r => r.id === id); if (r) { put('routines', { ...r, paused: !r.paused }); render(); toast(r.paused ? 'Привычка снова активна.' : 'Привычка на паузе. Награды и история сохранены.'); } }
+  else if (action === 'routine-history') routineHistoryDialog();
+  else if (action === 'routine-date') { selectedDate = target.dataset.date; page = 'day'; focusMode = false; routinesOpen = true; closeDialog(); render(); }
   else if (action === 'game-shop') shopDialog();
   else if (action === 'reset-game') resetGameDialog();
   else if (action === 'new-wish') wishDialog();
@@ -453,7 +497,7 @@ function handleAction(event) {
   else if (action === 'idea-status') { const i = visible('ideas').find(i => i.id === id); put('ideas', { ...i, status: target.dataset.status }); render(); }
   else if (action === 'idea-to-task') { const i = visible('ideas').find(i => i.id === id); taskDialog({ title: i.title, notes: i.notes }, id); }
   else if (action === 'delete') {
-    openDialog('Удалить запись?', `<p class="dialog-intro">Запись будет удалена. Связанные задачи и цели останутся самостоятельными.</p><div class="dialog-footer"><div>${button('close-dialog', 'Отмена', '', 'btn btn-light')}${button('confirm-delete', 'Удалить', 'trash', 'btn btn-danger', `data-id="${id}" data-collection="${target.dataset.collection}"`)}</div></div>`);
+    openDialog('Удалить запись?', `<p class="dialog-intro">${target.dataset.collection === 'routines' ? 'Привычка будет удалена из ежедневного списка. История выполнений и заработанные награды сохранятся.' : 'Запись будет удалена. Связанные задачи и цели останутся самостоятельными.'}</p><div class="dialog-footer"><div>${button('close-dialog', 'Отмена', '', 'btn btn-light')}${button('confirm-delete', 'Удалить', 'trash', 'btn btn-danger', `data-id="${id}" data-collection="${target.dataset.collection}"`)}</div></div>`);
   }
   else if (action === 'confirm-delete') { remove(target.dataset.collection, id); closeDialog(); }
   else if (action === 'move-today') {
@@ -484,7 +528,13 @@ document.addEventListener('click', handleAction);
 document.addEventListener('submit', event => {
   event.preventDefault(); const form = event.target, formId = form.getAttribute('id'), values = Object.fromEntries(new FormData(form));
   if (formId === 'sync-form') { synchronize(form); return; }
-  if (formId === 'day-start-focus-form') {
+  if (formId === 'routine-form') {
+    const title = values.title.trim(); if (!title) return;
+    const old = visible('routines').find(r => r.id === values.id);
+    put('routines', { id: old?.id || uid(), title, notes: values.notes.trim(), paused: old?.paused || false, createdDate: old?.createdDate || selectedDate });
+    routinesOpen = true; closeDialog(); render(); toast('Привычка сохранена. Начните с небольшого шага.');
+  }
+  else if (formId === 'day-start-focus-form') {
     if (!dayStartDraft) return;
     dayStartDraft.focus = values.focus.trim(); dayStartStepDialog();
   }
@@ -595,6 +645,13 @@ window.addEventListener('storage', event => {
   try { state = mergeStates(state, validateState(JSON.parse(event.newValue))); render(); toast('Планы обновлены из другой вкладки'); } catch { toast('Не удалось прочитать изменения из другой вкладки'); }
 });
 dialog.addEventListener('click', event => { if (event.target === dialog) { const r = dialog.getBoundingClientRect(); if (event.clientX < r.left || event.clientX > r.right || event.clientY < r.top || event.clientY > r.bottom) closeDialog(); } });
+let lastCalendarDay = dateKey();
+setInterval(() => {
+  const current = dateKey();
+  if (current === lastCalendarDay || dialog.open || focusMode || /INPUT|TEXTAREA|SELECT/.test(document.activeElement?.tagName || '')) return;
+  if (page === 'day' && selectedDate === lastCalendarDay) { selectedDate = current; render(); }
+  lastCalendarDay = current;
+}, 15000);
 setInterval(updateTimer, 1000);
 render();
 if ('serviceWorker' in navigator && ['http:', 'https:'].includes(location.protocol)) navigator.serviceWorker.register('./sw.js').catch(() => {});
