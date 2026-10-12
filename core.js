@@ -65,6 +65,7 @@ export function periodOverlaps(value, start, end) {
 }
 export function validateState(input) {
   if (!input || ![1, 2, 3].includes(input.version)) throw new Error('Это не резервная копия Опоры поддерживаемой версии.');
+  if (input.version === 1 && (input.ledger !== undefined || input.rewards !== undefined)) input = migrateLegacyGame(input);
   const result = emptyState();
   const string = (v, limit) => typeof v === 'string' && v.length <= limit;
   for (const collection of COLLECTIONS) {
@@ -117,6 +118,23 @@ export function validateState(input) {
       return { ...text, status: record.status };
     });
   }
+  return result;
+}
+function migrateLegacyGame(input) {
+  if (!Array.isArray(input.ledger) || !Array.isArray(input.rewards) || (input.gameSettings !== undefined && (!Array.isArray(input.gameSettings) || input.gameSettings.length))) throw new Error('Нужен отдельный перенос настроек прежней игры. Исходная копия сохранена.');
+  const result = { ...emptyState(), ...input, version: 3 };
+  // The legacy 10-point size is the large task in the current 1/3/5 scale.
+  for (const key of ['tasks', 'goals']) result[key] = (input[key] || []).map(r => r.effort === 10 ? { ...r, effort: 5 } : r);
+  const awards = input.ledger.map(entry => {
+    const sourceId = entry.groupId || entry.id;
+    if (entry.deleted) return { id: `tasks.${sourceId}`, updatedAt: entry.updatedAt, deleted: true };
+    if (entry.kind !== 'earn' || !Number.isSafeInteger(entry.coins) || entry.coins < 0 || entry.coins > 1000) throw new Error('Эта операция прежней игры требует отдельного переноса. Исходная копия сохранена.');
+    return { id: `tasks.${sourceId}`, sourceType: 'tasks', sourceId, title: entry.title, notes: 'Награда перенесена из прежней игры. XP в исходном журнале не указан.', earned: true, xp: 0, coins: entry.coins, gold: 0, updatedAt: entry.updatedAt, deleted: false };
+  });
+  result.awards = [...(input.awards || []), ...awards];
+  result.wishes = [...(input.wishes || []), ...input.rewards.map(r => r.deleted ? { id: r.id, updatedAt: r.updatedAt, deleted: true } : {
+    id: r.id, title: r.title, notes: Number.isSafeInteger(r.euroCents) && r.euroCents >= 0 ? `Ориентировочная стоимость: ${(r.euroCents / 100).toFixed(2)} €` : '', currency: 'coins', cost: r.cost, repeatable: false, updatedAt: r.updatedAt, deleted: false
+  })];
   return result;
 }
 export function mergeStates(left, right) {

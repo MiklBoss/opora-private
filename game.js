@@ -1,4 +1,4 @@
-import { active } from './core.js?v=12';
+import { active } from './core.js?v=13';
 
 export const isComplete = (type, record) => !!record && (type === 'tasks' ? record.done === true : record.progress === 100);
 export function rewardFor(type, record) {
