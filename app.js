@@ -1,5 +1,5 @@
-import { emptyState, dateKey, shiftDate, validDate, validateState, mergeStates, active, encodeState, decodeState, LEVELS, planningPeriod, parsePlanningPeriod, planningPeriodRange, calendarPeriod, parseCalendarPeriod, calendarPeriodLabel, periodOverlaps, COLLECTIONS } from './core.js';
-import { updateAward, gameTotals, rewardFor, purchaseWish, earnedAwards, resetGame, routineStats } from './game.js';
+import { emptyState, dateKey, shiftDate, validDate, validateState, mergeStates, active, encodeState, decodeState, LEVELS, planningPeriod, parsePlanningPeriod, planningPeriodRange, calendarPeriod, parseCalendarPeriod, calendarPeriodLabel, periodOverlaps, COLLECTIONS } from './core.js?v=12';
+import { updateAward, gameTotals, rewardFor, purchaseWish, earnedAwards, resetGame, routineStats } from './game.js?v=12';
 
 const KEY = 'opora.data.v1', CONFIG = 'opora.github.v1', TIMER = 'opora.timer.v1';
 const app = document.querySelector('#app'), dialog = document.querySelector('#dialog');
@@ -28,9 +28,9 @@ const icon = (name, cls = '') => `<svg class="icon ${cls}" viewBox="0 0 24 24" f
 const esc = value => String(value ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const labels = { strategy: 'Стратегия', quarter: 'Полугодие · квартал', month: 'Месяц', week: 'Неделя', project: 'Проекты' };
 const captions = { strategy: '1–10 лет', quarter: 'Большие шаги', month: 'Ближайшие планы', week: 'Следующие шаги', project: 'От замысла к действию' };
-let state = emptyState(), storageFailed = false;
-try { const saved = localStorage.getItem(KEY); if (saved) state = validateState(JSON.parse(saved)); }
-catch { storageFailed = true; }
+let state = emptyState(), storageFailed = false, loadFailed = false, loadError = '', originalData = null;
+try { originalData = localStorage.getItem(KEY); if (originalData) state = validateState(JSON.parse(originalData)); }
+catch (error) { storageFailed = true; loadFailed = true; loadError = error instanceof SyntaxError ? 'Не удалось прочитать формат сохранённого файла.' : error.message; }
 let config = {};
 try { config = JSON.parse(localStorage.getItem(CONFIG) || '{}'); } catch { /* Keep planner usable. */ }
 let dayStartDraft = null, focusTaskId = '';
@@ -48,6 +48,7 @@ const task = id => visible('tasks').find(t => t.id === id);
 const isHot = t => t.hot || visible('tasks').some(c => c.parentTaskId === t.id && c.date === t.date && c.hot && (!c.done || !visible('days').find(d => d.id === t.date)?.closed));
 const day = () => visible('days').find(d => d.id === selectedDate) || { id: selectedDate, focus: '', review: '', closed: false };
 function save() {
+  if (loadFailed) return;
   try { if (storageFailed && localStorage.getItem(KEY)) return; localStorage.setItem(KEY, JSON.stringify(state)); storageFailed = false; }
   catch { storageFailed = true; toast('Не удалось сохранить в браузере. Скачайте резервную копию.'); }
   updateSaved();
@@ -98,7 +99,7 @@ function render() {
   document.body.classList.toggle('focus-mode', focusMode);
   if (focusMode) { renderFocus(); return; }
   app.innerHTML = `${sidebar()}<main class="main"><header class="topbar"><span class="breadcrumb">Моё пространство <span>/</span> ${page === 'day' ? 'Сегодня' : page === 'inbox' ? 'Выгрузка мыслей' : page === 'plans' ? 'Месяц · неделя' : labels[page]}</span><div class="topbar-right"><span id="saved-status" class="saved-status"></span>${button('game-shop', '', 'spark', 'icon-button', 'aria-label="Герой и магазин радостей" title="Герой и магазин"')}${button('toggle-theme', '', document.documentElement.dataset.theme === 'dark' ? 'sun' : 'moon', 'icon-button', `aria-label="${document.documentElement.dataset.theme === 'dark' ? 'Включить светлую тему' : 'Включить тёмную тему'}" title="Переключить тему"`)}${button('sync-settings', 'Синхронизация', 'cloud', 'btn btn-small btn-light', 'aria-label="Синхронизация между устройствами"')}${button('capture', 'Записать мысль', 'plus', 'btn btn-small btn-light')}${button('settings', '', 'settings', 'icon-button mobile-settings', 'aria-label="Настройки"')}</div></header>
-    <div class="content">${storageFailed ? '<div class="warning">Не удалось прочитать или сохранить данные. Скачайте копию в настройках. Исходные данные в браузере не перезаписываются.</div>' : ''}${localStorage.getItem('opora.example') ? `<div class="demo-banner"><span>${icon('book')} Это пример. Отредактируйте планы или начните со своих.</span>${button('clear-example', 'Убрать пример', '', 'text-button')}</div>` : ''}${page === 'day' ? renderDay() : page === 'inbox' ? renderIdeas() : renderGoals(page === 'plans' ? planLevel : page)}</div><footer class="page-footer"><span>Меньше шума. Больше смысла.</span><span>Опора <span class="footer-dot">·</span> шаг за шагом</span></footer></main>`;
+    <div class="content">${storageFailed ? `<div class="warning" role="alert"><strong>${loadFailed ? "Не удалось открыть сохранённые планы" : "Не удалось сохранить изменения"}</strong><p>${loadFailed ? "Исходные данные защищены от перезаписи. Сначала скачайте их копию, затем обновите приложение." : "Изменения пока в памяти этой страницы. Скачайте копию перед закрытием."}</p>${loadFailed ? `<p>Причина: ${esc(loadError)}</p>` : ""}<div class="button-row">${button("export", "Скачать исходную копию", "download", "btn btn-light")}${loadFailed ? button("refresh-app", "Обновить приложение", "reset", "btn btn-light") : ""}</div><small>Версия приложения: 12 · формат данных: ${state.version}</small></div>` : ''}${localStorage.getItem('opora.example') ? `<div class="demo-banner"><span>${icon('book')} Это пример. Отредактируйте планы или начните со своих.</span>${button('clear-example', 'Убрать пример', '', 'text-button')}</div>` : ''}${page === 'day' ? renderDay() : page === 'inbox' ? renderIdeas() : renderGoals(page === 'plans' ? planLevel : page)}</div><footer class="page-footer"><span>Меньше шума. Больше смысла.</span><span>Опора <span class="footer-dot">·</span> шаг за шагом</span></footer></main>`;
   updateSaved(); updateTimer();
 }
 let routinesOpen = false;
@@ -339,11 +340,22 @@ function settingsDialog() {
     <div class="settings-section"><h3>${icon('cloud')} Синхронизация через GitHub</h3><p>Один закрытый репозиторий и файл планов для телефона и компьютера. Нажимайте «Синхронизировать» перед и после работы на каждом устройстве.</p><form id="sync-form"><div class="form-columns">${textField('owner', 'Владелец', config.owner || '', 'Ваш логин GitHub')}${textField('repo', 'Репозиторий', config.repo || '', 'opora-private')}</div>${textField('path', 'Файл', config.path || 'opora-data.json')}<label class="field">Токен GitHub<input type="password" name="token" autocomplete="off" placeholder="Fine-grained token" value="${esc(sessionStorage.getItem('opora.token') || '')}" required></label><p class="settings-help">Создайте репозиторий с README и fine-grained token только для него: <strong>Contents — Read and write</strong>. Токен хранится в этой вкладке до её закрытия. <a href="https://github.com/settings/personal-access-tokens/new" target="_blank" rel="noopener noreferrer">Создать токен ↗</a></p><button type="submit" class="btn btn-primary" ${syncing ? 'disabled' : ''}>${icon('cloud')} ${syncing ? 'Синхронизация…' : 'Синхронизировать'}</button><p id="sync-status" role="status" class="settings-help">${config.lastSync ? `Последняя синхронизация: ${esc(new Date(config.lastSync).toLocaleString('ru-RU'))}` : 'Ещё не подключено'}</p></form></div>
     <div class="settings-section"><h3>${icon('book')} Установить как приложение</h3><p>На телефоне откройте опубликованный адрес и выберите «Добавить на главный экран» в меню браузера. На компьютере используйте установку приложения в браузере. После первого открытия доступна работа без интернета.</p><p class="settings-help">Локальные планы принадлежат этому браузеру. Резервная копия помогает сохранить их при очистке данных браузера.</p></div>`);
 }
+async function refreshApp() {
+  toast('Получаем свежую версию. Личные данные сохраняются.');
+  try {
+    const response = await fetch('./index.html?opora-update=' + Date.now(), { cache: 'reload' });
+    if (!response.ok) throw new Error('Обновление недоступно');
+    if ('serviceWorker' in navigator) { const registration = await navigator.serviceWorker.getRegistration(); await registration?.update(); }
+    const url = new URL(location.href); url.searchParams.set('opora-update', Date.now()); location.replace(url.href);
+  } catch { toast('Не удалось обновить. Проверьте интернет. Исходные планы сохранены.'); }
+}
 function downloadBackup() {
-  const blob = new Blob([JSON.stringify(state, null, 2)], { type: 'application/json' }), url = URL.createObjectURL(blob);
+  if (loadFailed && originalData === null) { toast('Браузер не дал доступ к исходным данным. Откройте приложение в обычном режиме браузера.'); return; }
+  const blob = new Blob([loadFailed ? originalData : JSON.stringify(state, null, 2)], { type: 'application/json' }), url = URL.createObjectURL(blob);
   const a = document.createElement('a'); a.href = url; a.download = `opora-${dateKey()}.json`; a.click(); setTimeout(() => URL.revokeObjectURL(url), 2000); toast('Резервная копия скачана');
 }
 async function synchronize(form) {
+  if (loadFailed) { toast('Сначала скачайте исходную копию и обновите приложение. Синхронизация приостановлена для сохранности планов.'); return; }
   if (syncing) return;
   const values = Object.fromEntries(new FormData(form)), status = form.querySelector('#sync-status'), submit = form.querySelector('[type="submit"]');
   const owner = values.owner.trim(), repo = values.repo.trim(), path = values.path.trim(), token = values.token.trim();
@@ -413,6 +425,8 @@ function updateTimer() {
 function handleAction(event) {
   const target = event.target.closest('[data-action]'); if (!target) return;
   event.preventDefault(); const action = target.dataset.action, id = target.dataset.id;
+  if (action === 'refresh-app') { refreshApp(); return; }
+  if (loadFailed && !['export', 'settings', 'sync-settings', 'close-dialog', 'navigate', 'toggle-theme', 'today', 'date', 'previous-day', 'next-day', 'toggle-routine-panel'].includes(action)) { toast('Сначала сохраните исходную копию и обновите приложение. Планы защищены от перезаписи.'); return; }
   if (action === 'navigate') { page = target.dataset.page; render(); window.scrollTo(0, 0); }
   else if (action === 'toggle-theme') {
     const theme = document.documentElement.dataset.theme === 'dark' ? 'light' : 'dark';
@@ -527,6 +541,7 @@ function handleAction(event) {
 document.addEventListener('click', handleAction);
 document.addEventListener('submit', event => {
   event.preventDefault(); const form = event.target, formId = form.getAttribute('id'), values = Object.fromEntries(new FormData(form));
+  if (loadFailed) { toast('Изменения приостановлены. Скачайте исходную копию и обновите приложение.'); return; }
   if (formId === 'sync-form') { synchronize(form); return; }
   if (formId === 'routine-form') {
     const title = values.title.trim(); if (!title) return;
@@ -599,6 +614,7 @@ document.addEventListener('submit', event => {
   }
 });
 document.addEventListener('input', event => {
+  if (loadFailed) return;
   const target = event.target;
   if (['effort', 'profitable'].includes(target.name)) {
     const form = target.closest('form'), preview = form?.querySelector('.reward-preview');
@@ -624,6 +640,7 @@ document.addEventListener('change', async event => {
   if (event.target.closest('#goal-form') && ['periodKind', 'periodYear', 'periodIndex'].includes(event.target.name)) updateGoalPeriodFields(event.target.closest('form'));
   if (event.target.id === 'date-picker' && validDate(event.target.value)) { selectedDate = event.target.value; render(); }
   if (event.target.id === 'import-file') {
+    if (loadFailed) { toast('Импорт приостановлен, чтобы не заменить непрочитанные планы. Сначала скачайте исходную копию.'); event.target.value = ''; return; }
     const file = event.target.files[0]; if (!file) return;
     try {
       if (file.size > 5 * 1024 * 1024) throw new Error('Копия слишком большая. Максимум — 5 МБ.');
@@ -641,6 +658,7 @@ document.addEventListener('keydown', event => {
   else if (['f', 'а'].includes(event.key.toLowerCase())) { focusTaskId = ''; focusMode = !focusMode; render(); }
 });
 window.addEventListener('storage', event => {
+  if (loadFailed) return;
   if (event.key !== KEY || !event.newValue) return;
   try { state = mergeStates(state, validateState(JSON.parse(event.newValue))); render(); toast('Планы обновлены из другой вкладки'); } catch { toast('Не удалось прочитать изменения из другой вкладки'); }
 });

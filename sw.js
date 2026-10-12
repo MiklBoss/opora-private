@@ -1,7 +1,7 @@
-const CACHE = 'opora-v11';
-const FILES = ['./', './index.html', './styles.css', './app.js', './core.js', './game.js', './icon.svg', './icon-192.png', './icon-512.png', './manifest.webmanifest'];
+const CACHE = 'opora-v12';
+const FILES = ['./', './index.html', './styles.css?v=12', './app.js?v=12', './core.js?v=12', './game.js?v=12', './icon.svg', './icon-192.png', './icon-512.png', './manifest.webmanifest'];
 self.addEventListener('install', event => {
-  event.waitUntil(caches.open(CACHE).then(cache => cache.addAll(FILES)));
+  event.waitUntil(caches.open(CACHE).then(cache => cache.addAll(FILES).then(() => self.skipWaiting())));
 });
 self.addEventListener('activate', event => {
   event.waitUntil(caches.keys().then(keys => Promise.all(keys.filter(key => key.startsWith('opora-') && key !== CACHE).map(key => caches.delete(key)))).then(() => self.clients.claim()));
