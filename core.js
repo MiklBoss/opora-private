@@ -1,6 +1,6 @@
-export const COLLECTIONS = ['tasks', 'goals', 'ideas', 'days', 'awards', 'wishes', 'purchases', 'routines', 'routineChecks'];
+export const COLLECTIONS = ['tasks', 'goals', 'ideas', 'days', 'awards', 'wishes', 'purchases', 'routines', 'routineChecks', 'goalSteps'];
 export const LEVELS = ['strategy', 'quarter', 'month', 'week', 'project'];
-export function emptyState() { return { version: 3, tasks: [], goals: [], ideas: [], days: [], awards: [], wishes: [], purchases: [], routines: [], routineChecks: [] }; }
+export function emptyState() { return { version: 4, tasks: [], goals: [], ideas: [], days: [], awards: [], wishes: [], purchases: [], routines: [], routineChecks: [], goalSteps: [] }; }
 export function dateKey(date = new Date()) {
   return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
 }
@@ -64,12 +64,12 @@ export function periodOverlaps(value, start, end) {
   return !!period && period.start <= end && period.end >= start;
 }
 export function validateState(input) {
-  if (!input || ![1, 2, 3].includes(input.version)) throw new Error('Это не резервная копия Опоры поддерживаемой версии.');
+  if (!input || ![1, 2, 3, 4].includes(input.version)) throw new Error('Это не резервная копия Опоры поддерживаемой версии.');
   if (input.version === 1 && (input.ledger !== undefined || input.rewards !== undefined)) input = migrateLegacyGame(input);
   const result = emptyState();
   const string = (v, limit) => typeof v === 'string' && v.length <= limit;
   for (const collection of COLLECTIONS) {
-    const records = input[collection] ?? ((input.version === 1 && ['awards', 'wishes', 'purchases'].includes(collection)) || (input.version < 3 && ['routines', 'routineChecks'].includes(collection)) ? [] : undefined);
+    const records = input[collection] ?? ((input.version < 4 && collection === 'goalSteps') ? [] : (input.version === 1 && ['awards', 'wishes', 'purchases'].includes(collection)) || (input.version < 3 && ['routines', 'routineChecks'].includes(collection)) ? [] : undefined);
     if (!Array.isArray(records) || records.length > 10000) throw new Error('Неверный формат или слишком много записей.');
     const ids = new Set();
     result[collection] = records.map(record => {
@@ -83,6 +83,10 @@ export function validateState(input) {
       }
       if (!string(record.title, 500) || !record.title.trim() || !string(record.notes || '', 5000)) throw new Error('Неверный формат текста записи.');
       const text = { ...base, title: record.title, notes: record.notes || '' };
+      if (collection === 'goalSteps') {
+        if (!string(record.goalId, 100) || !/^[a-zA-Z0-9_.:-]+$/.test(record.goalId) || typeof record.done !== 'boolean') throw new Error('Неверный формат шага цели.');
+        return { ...text, goalId: record.goalId, done: record.done };
+      }
       if (collection === 'routines') {
         if (typeof record.paused !== 'boolean' || !validDate(record.createdDate)) throw new Error('Неверный формат ежедневной рутины.');
         return { ...text, paused: record.paused, createdDate: record.createdDate };
@@ -107,8 +111,8 @@ export function validateState(input) {
       if (['tasks', 'goals'].includes(collection) && ((record.profitable !== undefined && typeof record.profitable !== 'boolean') || (record.effort !== undefined && ![1, 3, 5].includes(record.effort)))) throw new Error('Неверный формат награды за дело.');
       const game = { ...(record.profitable === undefined ? {} : { profitable: record.profitable }), ...(record.effort === undefined ? {} : { effort: record.effort }) };
       if (collection === 'tasks') {
-        if (!validDate(record.date) || typeof record.done !== 'boolean' || typeof record.hot !== 'boolean' || !string(record.goalId || '', 100) || !string(record.parentTaskId || '', 100)) throw new Error('Неверный формат задачи.');
-        return { ...text, ...game, date: record.date, done: record.done, hot: record.hot, goalId: record.goalId || '', parentTaskId: record.parentTaskId || '' };
+        if (!validDate(record.date) || typeof record.done !== 'boolean' || typeof record.hot !== 'boolean' || !string(record.goalId || '', 100) || !string(record.parentTaskId || '', 100) || !string(record.goalStepId || '', 100)) throw new Error('Неверный формат задачи.');
+        return { ...text, ...game, date: record.date, done: record.done, hot: record.hot, goalId: record.goalId || '', parentTaskId: record.parentTaskId || '', goalStepId: record.goalStepId || '' };
       }
       if (collection === 'goals') {
         if (!LEVELS.includes(record.level) || !string(record.period, 100) || !string(record.parentId || '', 100) || !Number.isFinite(record.progress) || record.progress < 0 || record.progress > 100) throw new Error('Неверный формат цели.');
@@ -161,3 +165,15 @@ export function decodeState(content) {
   const bytes = Uint8Array.from(atob(content.replace(/\s/g, '')), char => char.charCodeAt(0));
   return validateState(JSON.parse(new TextDecoder('utf-8', { fatal: true }).decode(bytes)));
 }
+
+// Completion is derived from the same scheduled task, even after offline merging.
+export function stepDone(state, step) {
+  const linked = active(state.tasks).filter(t => t.goalStepId === step.id).sort((a,b) => b.updatedAt.localeCompare(a.updatedAt) || a.id.localeCompare(b.id))[0];
+  return linked ? linked.done : step.done;
+}
+export function goalStepStats(state, goalId) {
+  const steps = active(state.goalSteps || []).filter(s => s.goalId === goalId);
+  const done = steps.filter(s => stepDone(state, s)).length;
+  return { steps, done, total: steps.length, progress: steps.length ? Math.round(done / steps.length * 100) : null };
+}
+export function goalProgress(state, goal) { return goalStepStats(state, goal.id).progress ?? goal.progress; }

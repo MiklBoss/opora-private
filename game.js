@@ -1,4 +1,4 @@
-import { active } from './core.js?v=13';
+import { active, goalProgress, goalStepStats } from './core.js?v=14';
 
 export const isComplete = (type, record) => !!record && (type === 'tasks' ? record.done === true : record.progress === 100);
 export function rewardFor(type, record) {
@@ -7,10 +7,12 @@ export function rewardFor(type, record) {
 }
 // One award ID per source: completing again never creates a second credit.
 export function updateAward(state, type, record, previous) {
-  if (!['tasks', 'goals'].includes(type)) return;
+  if (!['tasks', 'goals'].includes(type) || (type === 'tasks' && record.goalStepId)) return;
+  const split = type === 'goals' ? goalStepStats(state, record.id) : null;
+  const hasCredit = split?.total ? split.done > 0 : isComplete(type, record);
   const id = `${type}.${record.id}`, index = state.awards.findIndex(a => a.id === id), completed = isComplete(type, record);
   const existing = state.awards[index]?.deleted ? null : state.awards[index];
-  if (!existing && (!completed || isComplete(type, previous))) return;
+  if (!existing && (!hasCredit || (!split?.total && isComplete(type, previous)))) return;
   const award = { id, title: record.title, notes: '', sourceType: type, sourceId: record.id, earned: completed, ...(existing ? { xp: existing.xp, coins: existing.coins, gold: existing.gold } : rewardFor(type, record)), updatedAt: record.updatedAt, deleted: false };
   if (index === -1) state.awards.push(award); else state.awards[index] = award;
 }
@@ -27,11 +29,18 @@ export function earnedAwards(state) {
   const sources = { tasks: new Map(state.tasks.map(t => [t.id, t])), goals: new Map(state.goals.map(g => [g.id, g])) };
   return active(state.awards).filter(award => {
     const source = sources[award.sourceType].get(award.sourceId);
+    if (source && !source.deleted && award.sourceType === 'goals' && goalStepStats(state, source.id).total) return goalProgress(state, source) > 0;
     return source && !source.deleted ? isComplete(award.sourceType, source) : award.earned;
+  }).map(award => {
+    const source = sources.goals.get(award.sourceId);
+    if (award.sourceType !== 'goals' || !source || source.deleted) return award;
+    const split = goalStepStats(state, source.id);
+    return !split.total ? award : { ...award, ...Object.fromEntries(['xp', 'coins', 'gold'].map(k => [k, Math.floor(award[k] * split.done / split.total)])) };
   });
 }
 export function gameTotals(state) {
-  const totals = earnedAwards(state).reduce((sum, award) => ({ xp: sum.xp + award.xp, coins: sum.coins + award.coins, gold: sum.gold + award.gold }), { xp: 0, coins: 0, gold: 0 });
+  const credited = earnedAwards(state);
+  const totals = credited.reduce((sum, award) => ({ xp: sum.xp + award.xp, coins: sum.coins + award.coins, gold: sum.gold + award.gold }), { xp: 0, coins: 0, gold: 0 });
   const routines = routineTotals(state); totals.xp += routines.xp; totals.coins += routines.coins;
   for (const purchase of active(state.purchases)) totals[purchase.currency] -= purchase.cost;
   return { ...totals, level: Math.floor(totals.xp / 100) + 1, progress: totals.xp % 100, next: 100 - totals.xp % 100 };

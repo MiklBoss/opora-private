@@ -1,5 +1,5 @@
-import { emptyState, dateKey, shiftDate, validDate, validateState, mergeStates, active, encodeState, decodeState, LEVELS, planningPeriod, parsePlanningPeriod, planningPeriodRange, calendarPeriod, parseCalendarPeriod, calendarPeriodLabel, periodOverlaps, COLLECTIONS } from './core.js?v=13';
-import { updateAward, gameTotals, rewardFor, purchaseWish, earnedAwards, resetGame, routineStats } from './game.js?v=13';
+import { emptyState, dateKey, shiftDate, validDate, validateState, mergeStates, active, encodeState, decodeState, LEVELS, planningPeriod, parsePlanningPeriod, planningPeriodRange, calendarPeriod, parseCalendarPeriod, calendarPeriodLabel, periodOverlaps, COLLECTIONS, goalStepStats, goalProgress, stepDone } from './core.js?v=14';
+import { updateAward, gameTotals, rewardFor, purchaseWish, earnedAwards, resetGame, routineStats } from './game.js?v=14';
 
 const KEY = 'opora.data.v1', CONFIG = 'opora.github.v1', TIMER = 'opora.timer.v1';
 const app = document.querySelector('#app'), dialog = document.querySelector('#dialog');
@@ -63,15 +63,20 @@ function put(collection, record, { game = true } = {}) {
   const previous = state[collection][index];
   if (index === -1) state[collection].push(value); else state[collection][index] = value;
   if (game) updateAward(state, collection, value, previous);
+  if (collection === 'tasks' && value.goalStepId) { const i = state.goalSteps.findIndex(s => s.id === value.goalStepId && !s.deleted); if (i !== -1) state.goalSteps[i] = { ...state.goalSteps[i], title: value.title, notes: value.notes, done: value.done, updatedAt: value.updatedAt }; }
+  if (game && ((collection === 'tasks' && value.goalStepId) || collection === 'goalSteps')) refreshStepGoal(value.goalId);
   save(); return value;
 }
 function remove(collection, id) {
   const record = state[collection].find(r => r.id === id);
   if (!record) return;
+  if (collection === 'tasks' && record.goalStepId) { const step = visible('goalSteps').find(s => s.id === record.goalStepId); if (step) put('goalSteps', { ...step, done: record.done }); }
   updateAward(state, collection, { ...record, updatedAt: stamp() }, record);
+  if (collection === 'goals' && goalStepStats(state, id).total) { const credit = earnedAwards(state).find(a => a.sourceType === 'goals' && a.sourceId === id); if (credit) { const i = state.awards.findIndex(a => a.id === credit.id); state.awards[i] = { ...credit, earned: true, updatedAt: stamp() }; } }
   state[collection] = state[collection].map(r => r.id === id ? { id, deleted: true, updatedAt: stamp() } : r);
   if (collection === 'tasks') visible('tasks').filter(t => t.parentTaskId === id).forEach(t => put('tasks', { ...t, parentTaskId: '' }));
   if (collection === 'goals') {
+    visible('goalSteps').filter(s => s.goalId === id).forEach(s => { const linked = visible('tasks').find(t => t.goalStepId === s.id); if (linked) put('tasks', { ...linked, goalStepId: '', goalId: '' }, { game: false }); else put('ideas', { id: uid(), title: s.title, notes: s.notes, status: s.done ? 'archived' : 'inbox' }); state.goalSteps = state.goalSteps.map(x => x.id === s.id ? { id: x.id, deleted: true, updatedAt: stamp() } : x); });
     visible('goals').filter(g => g.parentId === id).forEach(g => put('goals', { ...g, parentId: '' }));
     visible('tasks').filter(t => t.goalId === id).forEach(t => put('tasks', { ...t, goalId: '' }));
   }
@@ -99,7 +104,7 @@ function render() {
   document.body.classList.toggle('focus-mode', focusMode);
   if (focusMode) { renderFocus(); return; }
   app.innerHTML = `${sidebar()}<main class="main"><header class="topbar"><span class="breadcrumb">Моё пространство <span>/</span> ${page === 'day' ? 'Сегодня' : page === 'inbox' ? 'Выгрузка мыслей' : page === 'plans' ? 'Месяц · неделя' : labels[page]}</span><div class="topbar-right"><span id="saved-status" class="saved-status"></span>${button('game-shop', '', 'spark', 'icon-button', 'aria-label="Герой и магазин радостей" title="Герой и магазин"')}${button('toggle-theme', '', document.documentElement.dataset.theme === 'dark' ? 'sun' : 'moon', 'icon-button', `aria-label="${document.documentElement.dataset.theme === 'dark' ? 'Включить светлую тему' : 'Включить тёмную тему'}" title="Переключить тему"`)}${button('sync-settings', 'Синхронизация', 'cloud', 'btn btn-small btn-light', 'aria-label="Синхронизация между устройствами"')}${button('capture', 'Записать мысль', 'plus', 'btn btn-small btn-light')}${button('settings', '', 'settings', 'icon-button mobile-settings', 'aria-label="Настройки"')}</div></header>
-    <div class="content">${storageFailed ? `<div class="warning" role="alert"><strong>${loadFailed ? "Не удалось открыть сохранённые планы" : "Не удалось сохранить изменения"}</strong><p>${loadFailed ? "Исходные данные защищены от перезаписи. Сначала скачайте их копию, затем обновите приложение." : "Изменения пока в памяти этой страницы. Скачайте копию перед закрытием."}</p>${loadFailed ? `<p>Причина: ${esc(loadError)}</p>` : ""}<div class="button-row">${button("export", "Скачать исходную копию", "download", "btn btn-light")}${loadFailed ? button("refresh-app", "Обновить приложение", "reset", "btn btn-light") : ""}</div><small>Версия приложения: 13 · формат данных: ${state.version}</small></div>` : ''}${localStorage.getItem('opora.example') ? `<div class="demo-banner"><span>${icon('book')} Это пример. Отредактируйте планы или начните со своих.</span>${button('clear-example', 'Убрать пример', '', 'text-button')}</div>` : ''}${page === 'day' ? renderDay() : page === 'inbox' ? renderIdeas() : renderGoals(page === 'plans' ? planLevel : page)}</div><footer class="page-footer"><span>Меньше шума. Больше смысла.</span><span>Опора <span class="footer-dot">·</span> шаг за шагом</span></footer></main>`;
+    <div class="content">${storageFailed ? `<div class="warning" role="alert"><strong>${loadFailed ? "Не удалось открыть сохранённые планы" : "Не удалось сохранить изменения"}</strong><p>${loadFailed ? "Исходные данные защищены от перезаписи. Сначала скачайте их копию, затем обновите приложение." : "Изменения пока в памяти этой страницы. Скачайте копию перед закрытием."}</p>${loadFailed ? `<p>Причина: ${esc(loadError)}</p>` : ""}<div class="button-row">${button("export", "Скачать исходную копию", "download", "btn btn-light")}${loadFailed ? button("refresh-app", "Обновить приложение", "reset", "btn btn-light") : ""}</div><small>Версия приложения: 14 · формат данных: ${state.version}</small></div>` : ''}${localStorage.getItem('opora.example') ? `<div class="demo-banner"><span>${icon('book')} Это пример. Отредактируйте планы или начните со своих.</span>${button('clear-example', 'Убрать пример', '', 'text-button')}</div>` : ''}${page === 'day' ? renderDay() : page === 'inbox' ? renderIdeas() : renderGoals(page === 'plans' ? planLevel : page)}</div><footer class="page-footer"><span>Меньше шума. Больше смысла.</span><span>Опора <span class="footer-dot">·</span> шаг за шагом</span></footer></main>`;
   updateSaved(); updateTimer();
 }
 let routinesOpen = false;
@@ -170,7 +175,7 @@ function dayClosureControls(record) {
 }
 function taskRow(t, { hideCompleted = false } = {}) {
   const children = visible('tasks').filter(c => c.parentTaskId === t.id && c.date === t.date && (!hideCompleted || !c.done)), linked = goal(t.goalId);
-  return `<div class="task-wrapper"><div class="task-row ${t.done ? 'done' : ''} ${t.parentTaskId ? 'subtask' : ''}"><button class="task-check ${t.done ? 'checked' : ''}" data-action="toggle-task" data-id="${t.id}" aria-label="${t.done ? 'Вернуть' : 'Завершить'}: ${esc(t.title)}" aria-pressed="${t.done}">${t.done ? icon('check') : ''}</button><button class="task-text" data-action="edit-task" data-id="${t.id}"><span>${esc(t.title)}</span>${linked || children.length || t.notes ? `<small>${linked ? `${icon('project')}${esc(linked.title)}` : ''}${children.length ? `<span>${children.filter(c => c.done).length}/${children.length} подзадач</span>` : ''}${t.notes ? '<span>Есть заметка</span>' : ''}</small>` : ''}</button><div class="task-actions">${!t.parentTaskId ? button('subtask', '', 'plus', 'icon-button', `data-id="${t.id}" aria-label="Добавить подзадачу"`) : ''}${button('hot-task', '', 'flame', `icon-button ${t.hot ? 'is-hot' : ''}`, `data-id="${t.id}" aria-label="${t.hot ? 'Снять' : 'Добавить'} приоритет" aria-pressed="${t.hot}"`)}</div></div>${children.map(c => taskRow(c, { hideCompleted })).join('')}</div>`;
+  return `<div class="task-wrapper"><div class="task-row ${t.done ? 'done' : ''} ${t.parentTaskId ? 'subtask' : ''}"><button class="task-check ${t.done ? 'checked' : ''}" data-action="toggle-task" data-id="${t.id}" aria-label="${t.done ? 'Вернуть' : 'Завершить'}: ${esc(t.title)}" aria-pressed="${t.done}">${t.done ? icon('check') : ''}</button><button class="task-text" data-action="edit-task" data-id="${t.id}"><span>${esc(t.title)}</span>${linked || children.length || t.notes ? `<small>${linked ? `${icon('project')}${esc(linked.title)}` : ''}${children.length ? `<span>${children.filter(c => c.done).length}/${children.length} подзадач</span>` : ''}${t.notes ? '<span>Есть заметка</span>' : ''}</small>` : ''}</button><div class="task-actions">${!t.parentTaskId && !t.goalStepId ? button('subtask', '', 'plus', 'icon-button', `data-id="${t.id}" aria-label="Добавить подзадачу"`) : ''}${button('hot-task', '', 'flame', `icon-button ${t.hot ? 'is-hot' : ''}`, `data-id="${t.id}" aria-label="${t.hot ? 'Снять' : 'Добавить'} приоритет" aria-pressed="${t.hot}"`)}</div></div>${children.map(c => taskRow(c, { hideCompleted })).join('')}</div>`;
 }
 function timerCard() {
   return `<section class="card timer-card"><div class="section-heading"><h3>${icon('focus')} Время для фокуса</h3><span class="timer-dot"></span></div><p>Одно дело. Без переключений.</p><div class="timer-time" id="timer-time">25:00</div><div class="timer-controls">${button('timer-toggle', timer.end ? 'Пауза' : 'Начать 25 минут', timer.end ? 'pause' : 'play', 'btn btn-primary', 'id="timer-toggle"')}${button('timer-reset', '', 'reset', 'icon-button', 'aria-label="Сбросить таймер"')}</div><small id="timer-sessions">${timer.sessions ? `Сегодня в этой вкладке: ${timer.sessions} сессий` : 'Можно начать с одного спокойного отрезка'}</small></section>`;
@@ -213,8 +218,10 @@ function renderGoals(level) {
     <div class="soft-note">${icon('leaf')} План — это опора, а не обещание успеть всё. Его можно менять.</div>`;
 }
 function goalCard(g) {
+  g = { ...g, progress: goalProgress(state, g) };
+  const split = goalStepStats(state, g.id);
   const linkedTasks = visible('tasks').filter(t => t.goalId === g.id), children = visible('goals').filter(c => c.parentId === g.id), parent = goal(g.parentId);
-  return `<article class="goal-card"><div class="goal-card-top"><span class="period-tag">${esc(calendarPeriodLabel(g.period) || captions[g.level])}</span>${button('edit-goal', '', 'edit', 'icon-button', `data-id="${g.id}" aria-label="Редактировать: ${esc(g.title)}"`)}</div><h2>${esc(g.title)}</h2>${g.notes ? `<p class="goal-notes">${esc(g.notes)}</p>` : '<p class="goal-notes muted">Добавьте критерий результата и следующий шаг.</p>'}${parent ? `<button class="parent-link" data-action="open-goal" data-id="${parent.id}">${icon('strategy')} ${esc(parent.title)} ${icon('arrow')}</button>` : ''}<div class="goal-progress-label"><span>Продвижение</span><b>${g.progress}%</b></div><label class="sr-only" for="progress-${g.id}">Продвижение: ${esc(g.title)}</label><input id="progress-${g.id}" class="goal-progress" type="range" min="0" max="100" step="5" value="${g.progress}" data-goal="${g.id}" style="--progress:${g.progress}%"><div class="goal-card-footer"><span>${children.length} связанных целей · ${linkedTasks.filter(t => t.done).length}/${linkedTasks.length} задач</span>${button('goal-details', 'Открыть', 'arrow', 'text-button', `data-id="${g.id}"`)}</div></article>`;
+  return `<article class="goal-card"><div class="goal-card-top"><span class="period-tag">${esc(calendarPeriodLabel(g.period) || captions[g.level])}</span>${button('edit-goal', '', 'edit', 'icon-button', `data-id="${g.id}" aria-label="Редактировать: ${esc(g.title)}"`)}</div><h2>${esc(g.title)}</h2>${g.notes ? `<p class="goal-notes">${esc(g.notes)}</p>` : '<p class="goal-notes muted">Добавьте критерий результата и следующий шаг.</p>'}${parent ? `<button class="parent-link" data-action="open-goal" data-id="${parent.id}">${icon('strategy')} ${esc(parent.title)} ${icon('arrow')}</button>` : ''}<div class="goal-progress-label"><span>Продвижение</span><b>${g.progress}%</b></div><label class="sr-only" for="progress-${g.id}">Продвижение: ${esc(g.title)}</label><input id="progress-${g.id}" class="goal-progress" type="range" min="0" max="100" step="5" value="${g.progress}" data-goal="${g.id}" ${split.total ? 'disabled aria-label="Прогресс считается по шагам"' : ''} style="--progress:${g.progress}%">${stepsPanel(g)}<div class="goal-card-footer"><span>${children.length} связанных целей · ${linkedTasks.filter(t => t.done).length}/${linkedTasks.length} задач</span>${button('goal-details', 'Открыть', 'arrow', 'text-button', `data-id="${g.id}"`)}</div></article>`;
 }
 function renderIdeas() {
   const records = visible('ideas').filter(i => i.status === ideaFilter).sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
@@ -281,7 +288,7 @@ function buyWishDialog(id) {
 }
 function taskDialog(record = {}, fromIdea = '', parent = '') {
   const parentTask = task(parent || record.parentTaskId), defaults = { id: '', title: '', notes: '', date: selectedDate, hot: false, goalId: '', ...record };
-  openDialog(parentTask ? 'Подзадача' : defaults.id ? 'Редактировать задачу' : 'Новый шаг', `${parentTask ? `<p class="dialog-intro">Часть задачи: ${esc(parentTask.title)}</p>` : ''}<input type="hidden" name="id" value="${defaults.id}"><input type="hidden" name="ideaId" value="${fromIdea}"><input type="hidden" name="parentTaskId" value="${parentTask?.id || ''}">${textField('title', 'Что нужно сделать?', defaults.title, 'Сформулируйте понятное действие')}<div class="form-columns"><label class="field">Дата<input type="date" name="date" value="${parentTask?.date || defaults.date}" required ${parentTask ? 'readonly' : ''}></label><label class="field">Цель или проект<select name="goalId"><option value="">Без привязки</option>${visible('goals').map(g => `<option value="${g.id}" ${(parentTask?.goalId || defaults.goalId) === g.id ? 'selected' : ''}>${esc(g.title)} · ${labels[g.level]}</option>`).join('')}</select></label></div>${notesField(defaults.notes)}${rewardFields(defaults, 'tasks')}<label class="checkbox-label"><input type="checkbox" name="hot" ${defaults.hot ? 'checked' : ''}>${icon('flame')} Горячая задача — важна сегодня</label>`, 'task-form', 'Сохранить', defaults.id ? button('delete', 'Удалить', 'trash', 'text-button danger', `data-id="${defaults.id}" data-collection="tasks"`) : '');
+  openDialog(parentTask ? 'Подзадача' : defaults.id ? 'Редактировать задачу' : 'Новый шаг', `${parentTask ? `<p class="dialog-intro">Часть задачи: ${esc(parentTask.title)}</p>` : ''}<input type="hidden" name="id" value="${defaults.id}"><input type="hidden" name="ideaId" value="${fromIdea}"><input type="hidden" name="parentTaskId" value="${parentTask?.id || ''}">${textField('title', 'Что нужно сделать?', defaults.title, 'Сформулируйте понятное действие')}<div class="form-columns"><label class="field">Дата<input type="date" name="date" value="${parentTask?.date || defaults.date}" required ${parentTask ? 'readonly' : ''}></label><label class="field">Цель или проект<select name="goalId"><option value="">Без привязки</option>${visible('goals').map(g => `<option value="${g.id}" ${(parentTask?.goalId || defaults.goalId) === g.id ? 'selected' : ''}>${esc(g.title)} · ${labels[g.level]}</option>`).join('')}</select></label></div>${notesField(defaults.notes)}${defaults.goalStepId ? '<p class="muted">Шаг входит в общую награду цели. Отдельная награда за задачу не начисляется.</p>' : rewardFields(defaults, 'tasks')}<label class="checkbox-label"><input type="checkbox" name="hot" ${defaults.hot ? 'checked' : ''}>${icon('flame')} Горячая задача — важна сегодня</label>`, 'task-form', 'Сохранить', defaults.id ? button('delete', 'Удалить', 'trash', 'text-button danger', `data-id="${defaults.id}" data-collection="tasks"`) : '');
 }
 function goalPeriodFields(record) {
   if (['month', 'week', 'project'].includes(record.level)) return calendarGoalFields(record);
@@ -324,16 +331,19 @@ function updateGoalPeriodFields(form) {
 }
 function goalDialog(record = {}, level = 'strategy') {
   const defaults = { id: '', title: '', notes: '', period: '', parentId: '', progress: 0, level, ...record };
+  defaults.progress = record.id ? goalProgress(state, record) : defaults.progress;
+  const split = goalStepStats(state, defaults.id);
   const parents = visible('goals').filter(g => LEVELS.indexOf(g.level) < LEVELS.indexOf(defaults.level));
-  openDialog(defaults.id ? 'Редактировать ' + (defaults.level === 'project' ? 'проект' : 'цель') : defaults.level === 'project' ? 'Новый проект' : 'Новая цель', `<p class="dialog-intro">${labels[defaults.level]} · ${captions[defaults.level]}</p><input type="hidden" name="id" value="${defaults.id}"><input type="hidden" name="level" value="${defaults.level}">${textField('title', 'Какой результат вы хотите получить?', defaults.title, 'Что изменится, когда это получится?')}${goalPeriodFields(defaults)}<label class="field">Связь с более широкой целью<select name="parentId"><option value="">Самостоятельная цель</option>${parents.map(g => `<option value="${g.id}" ${g.id === defaults.parentId ? 'selected' : ''}>${esc(g.title)} · ${labels[g.level]}</option>`).join('')}</select></label>${notesField(defaults.notes)}${rewardFields(defaults, 'goals')}<label class="field">Продвижение, %<input type="number" name="progress" min="0" max="100" step="1" value="${defaults.progress}" required></label>`, 'goal-form', 'Сохранить', defaults.id ? button('delete', 'Удалить', 'trash', 'text-button danger', `data-id="${defaults.id}" data-collection="goals"`) : '');
+  openDialog(defaults.id ? 'Редактировать ' + (defaults.level === 'project' ? 'проект' : 'цель') : defaults.level === 'project' ? 'Новый проект' : 'Новая цель', `<p class="dialog-intro">${labels[defaults.level]} · ${captions[defaults.level]}</p><input type="hidden" name="id" value="${defaults.id}"><input type="hidden" name="level" value="${defaults.level}">${textField('title', 'Какой результат вы хотите получить?', defaults.title, 'Что изменится, когда это получится?')}${goalPeriodFields(defaults)}<label class="field">Связь с более широкой целью<select name="parentId"><option value="">Самостоятельная цель</option>${parents.map(g => `<option value="${g.id}" ${g.id === defaults.parentId ? 'selected' : ''}>${esc(g.title)} · ${labels[g.level]}</option>`).join('')}</select></label>${notesField(defaults.notes)}${rewardFields(defaults, 'goals')}<label class="field">Продвижение, %<input type="number" name="progress" min="0" max="100" step="1" value="${defaults.progress}" required ${split.total ? 'readonly' : ''}></label>${split.total ? '<p class="muted">Продвижение считается автоматически по выполненным шагам.</p>' : ''}`, 'goal-form', 'Сохранить', defaults.id ? button('delete', 'Удалить', 'trash', 'text-button danger', `data-id="${defaults.id}" data-collection="goals"`) : '');
 }
 function ideaDialog(record = {}) {
   openDialog(record.id ? 'Редактировать мысль' : 'Оставьте мысль здесь', `<p class="dialog-intro">Не нужно разбирать её прямо сейчас. Вернитесь к своему фокусу.</p><input type="hidden" name="id" value="${record.id || ''}">${textField('title', 'Что крутится в голове?', record.title, 'Запишите как есть…')}${notesField(record.notes)}`, 'idea-form', 'Сохранить мысль');
 }
 function detailsDialog(id) {
   const g = goal(id); if (!g) return;
+  const displayedProgress = goalProgress(state, g);
   const children = visible('goals').filter(c => c.parentId === id), tasks = visible('tasks').filter(t => t.goalId === id && !t.parentTaskId);
-  openDialog(esc(g.title), `<p class="dialog-intro">${esc(calendarPeriodLabel(g.period))} · ${g.progress}%</p>${g.notes ? `<p class="detail-notes">${esc(g.notes)}</p>` : ''}<div class="detail-heading"><h3>Связанные цели и проекты</h3>${button('edit-goal', 'Редактировать', 'edit', 'text-button', `data-id="${g.id}"`)}</div>${children.length ? children.map(c => `<button class="linked-goal" data-action="open-goal" data-id="${c.id}"><span>${esc(c.title)}<small>${labels[c.level]} · ${c.progress}%</small></span>${icon('arrow')}</button>`).join('') : '<p class="muted">Связанных целей пока нет. Укажите эту цель как родительскую при создании следующего уровня.</p>'}<div class="detail-heading"><h3>Задачи проекта</h3>${button('project-task', 'Добавить задачу', 'plus', 'text-button', `data-id="${g.id}"`)}</div>${tasks.length ? `<div class="task-list">${tasks.map(t => `<div class="detail-task">${taskRow(t)}<small>${dateLabel(t.date)}</small></div>`).join('')}</div>` : '<p class="muted">Какой первый небольшой шаг приблизит результат?</p>'}`);
+  openDialog(esc(g.title), `<p class="dialog-intro">${esc(calendarPeriodLabel(g.period))} · ${displayedProgress}%</p>${g.notes ? `<p class="detail-notes">${esc(g.notes)}</p>` : ''}${stepsPanel(g)}<div class="detail-heading"><h3>Связанные цели и проекты</h3>${button('edit-goal', 'Редактировать', 'edit', 'text-button', `data-id="${g.id}"`)}</div>${children.length ? children.map(c => `<button class="linked-goal" data-action="open-goal" data-id="${c.id}"><span>${esc(c.title)}<small>${labels[c.level]} · ${goalProgress(state, c)}%</small></span>${icon('arrow')}</button>`).join('') : '<p class="muted">Связанных целей пока нет. Укажите эту цель как родительскую при создании следующего уровня.</p>'}<div class="detail-heading"><h3>Задачи проекта</h3>${button('project-task', 'Добавить задачу', 'plus', 'text-button', `data-id="${g.id}"`)}</div>${tasks.length ? `<div class="task-list">${tasks.map(t => `<div class="detail-task">${taskRow(t)}<small>${dateLabel(t.date)}</small></div>`).join('')}</div>` : '<p class="muted">Какой первый небольшой шаг приблизит результат?</p>'}`);
 }
 function settingsDialog() {
   openDialog('Ваше личное пространство', `<div class="settings-section"><h3>${icon('download')} Перенести планы без переписывания</h3><p>Можно сразу перенести уже введённые планы на другое устройство.</p><ol class="settings-steps"><li>На ПК нажмите «Скачать копию» в приложении, где вы вводили планы.</li><li>Передайте скачанный JSON-файл на телефон удобным способом.</li><li>На телефоне откройте Опору → настройки → «Импортировать» и выберите этот файл.</li></ol><p>Импорт объединяет копию с текущими планами. Если на ПК вы работали через localhost, скачайте копию именно там, затем импортируйте её в приложение по опубликованной ссылке.</p><div class="button-row">${button('export', 'Скачать копию', 'download', 'btn btn-light')}<label class="btn btn-light file-label">${icon('upload')} Импортировать<input id="import-file" type="file" accept=".json,application/json"></label></div></div>
@@ -464,6 +474,7 @@ function handleAction(event) {
     put('days', { ...day(), closed: action === 'close-day' }); render();
     toast(action === 'close-day' ? 'День закрыт. Выполненные задачи в архиве.' : 'День открыт. Все задачи снова видны.');
   }
+  else if (action.startsWith('step-')) handleStepAction(action, id);
   else if (action === 'new-task') taskDialog();
   else if (action === 'edit-task') taskDialog(task(id));
   else if (action === 'subtask') taskDialog({}, '', id);
@@ -542,6 +553,7 @@ document.addEventListener('click', handleAction);
 document.addEventListener('submit', event => {
   event.preventDefault(); const form = event.target, formId = form.getAttribute('id'), values = Object.fromEntries(new FormData(form));
   if (loadFailed) { toast('Изменения приостановлены. Скачайте исходную копию и обновите приложение.'); return; }
+  if (formId === 'step-form' || formId === 'step-date-form') { submitStep(formId, values); return; }
   if (formId === 'sync-form') { synchronize(form); return; }
   if (formId === 'routine-form') {
     const title = values.title.trim(); if (!title) return;
@@ -573,7 +585,7 @@ document.addEventListener('submit', event => {
   else if (formId === 'task-form') {
     const title = values.title.trim(); if (!title || !validDate(values.date)) return;
     const previous = task(values.id), parentTask = task(values.parentTaskId), date = parentTask?.date || values.date;
-    const newTask = put('tasks', { id: values.id || uid(), title, notes: values.notes.trim(), date, hot: values.hot === 'on', done: previous?.done || false, goalId: values.goalId, parentTaskId: parentTask?.id || '', profitable: values.profitable === 'on', effort: Number(values.effort) });
+    const newTask = put('tasks', { id: values.id || uid(), title, notes: values.notes.trim(), date, hot: values.hot === 'on', done: previous?.done || false, goalId: previous?.goalStepId ? previous.goalId : values.goalId, goalStepId: previous?.goalStepId || '', parentTaskId: parentTask?.id || '', profitable: previous?.goalStepId ? (previous.profitable || false) : values.profitable === 'on', effort: previous?.goalStepId ? (previous.effort || 1) : Number(values.effort) });
     if (previous && previous.date !== date) visible('tasks').filter(t => t.parentTaskId === previous.id).forEach(t => put('tasks', { ...t, date }));
     if (values.ideaId) { const i = visible('ideas').find(i => i.id === values.ideaId); if (i) put('ideas', { ...i, status: 'archived' }); }
     closeDialog(); render(); toast(values.ideaId ? 'Мысль стала задачей. Исходная запись в архиве.' : 'Задача сохранена');
@@ -627,7 +639,7 @@ document.addEventListener('input', event => {
   if (target.closest('#goal-form') && ['periodKind', 'periodYear', 'periodIndex'].includes(target.name)) updateGoalPeriodFields(target.closest('form'));
   if (target.id === 'day-focus' || target.id === 'day-review') put('days', { ...day(), [target.id === 'day-focus' ? 'focus' : 'review']: target.value });
   if (target.dataset.goal) {
-    const before = gameTotals(state), g = goal(target.dataset.goal); put('goals', { ...g, progress: Number(target.value) }); target.style.setProperty('--progress', `${target.value}%`); target.previousElementSibling.previousElementSibling.querySelector('b').textContent = `${target.value}%`; announceReward(before);
+    const before = gameTotals(state), g = goal(target.dataset.goal); if (goalStepStats(state, g.id).total) return; put('goals', { ...g, progress: Number(target.value) }); target.style.setProperty('--progress', `${target.value}%`); target.previousElementSibling.previousElementSibling.querySelector('b').textContent = `${target.value}%`; announceReward(before);
   }
 });
 document.addEventListener('change', async event => {
@@ -673,3 +685,57 @@ setInterval(() => {
 setInterval(updateTimer, 1000);
 render();
 if ('serviceWorker' in navigator && ['http:', 'https:'].includes(location.protocol)) navigator.serviceWorker.register('./sw.js').catch(() => {});
+
+// A goal step is one record, optionally linked to one daily task.
+function refreshStepGoal(goalId) {
+  const g = goal(goalId); if (!g) return;
+  const stats = goalStepStats(state, goalId);
+  if (stats.total) put('goals', { ...g, progress: stats.progress });
+}
+function stepsPanel(g) {
+  const stats = goalStepStats(state, g.id);
+  return `<section class="goal-steps"><div class="detail-heading"><h3>Подцели и шаги <small>${stats.done}/${stats.total}</small></h3>${button('step-new', 'Добавить', 'plus', 'text-button', `data-id="${g.id}"`)}</div>${stats.total ? `<div class="goal-step-list">${stats.steps.map(s => {
+    const linked = visible('tasks').find(t => t.goalStepId === s.id), done = stepDone(state, s);
+    return `<div class="goal-step ${done ? 'done' : ''}"><button class="task-check ${done ? 'checked' : ''}" data-action="step-toggle" data-id="${s.id}" aria-pressed="${done}" aria-label="${done ? 'Вернуть шаг' : 'Выполнить шаг'}: ${esc(s.title)}">${done ? icon('check') : ''}</button><div class="goal-step-main"><button class="goal-step-title" data-action="step-edit" data-id="${s.id}">${esc(s.title)}</button>${s.notes ? `<small>${esc(s.notes)}</small>` : ''}${linked ? `<small>В плане дня · ${dateLabel(linked.date)}</small>` : ''}<div class="goal-step-actions">${button('step-date', linked ? 'Изменить дату' : 'На день', 'day', 'text-button', `data-id="${s.id}"`)}${linked ? button('step-day', 'Открыть день', 'arrow', 'text-button', `data-id="${s.id}"`) : ''}${button('step-delete', 'Удалить', 'trash', 'text-button danger', `data-id="${s.id}"`)}</div></div></div>`;
+  }).join('')}</div><p class="step-help">Прогресс считается по шагам. Награда цели распределяется между ними; назначение на день не добавляет вторую награду.</p>` : '<p class="muted">Разбейте результат на небольшие действия. Дату можно назначить позже.</p>'}</section>`;
+}
+function stepDialog(g, step = {}) {
+  if (!g) return;
+  openDialog(step.id ? 'Изменить шаг' : 'Новая подцель или шаг', `<p class="dialog-intro">Внутри цели: ${esc(g.title)}</p><input type="hidden" name="id" value="${step.id || ''}"><input type="hidden" name="goalId" value="${g.id}">${textField('title', 'Следующий понятный результат', step.title || '', 'Например, подготовить список рабочих фраз')}${notesField(step.notes)}<p class="muted">Можно выполнить здесь или назначить на день. Шаг использует часть общей награды цели.</p>`, 'step-form');
+}
+function showStepParent(goalId) { closeDialog(); render(); if (goal(goalId)) detailsDialog(goalId); }
+function handleStepAction(action, id) {
+  const step = visible('goalSteps').find(s => s.id === id);
+  if (action === 'step-new') { stepDialog(goal(id)); return; }
+  if (!step) return;
+  const g = goal(step.goalId), linked = visible('tasks').find(t => t.goalStepId === id);
+  if (action === 'step-edit') stepDialog(g, step);
+  else if (action === 'step-toggle') {
+    const before = gameTotals(state), done = !stepDone(state, step);
+    if (linked) { const d = visible('days').find(d => d.id === linked.date); if (!done && d?.closed) put('days', { ...d, closed: false }); put('tasks', { ...linked, done }); }
+    put('goalSteps', { ...step, done }); render(); if (dialog.open) detailsDialog(step.goalId); announceReward(before);
+  }
+  else if (action === 'step-date') openDialog('Назначить шаг на день', `<p class="dialog-intro">${esc(step.title)}</p><input type="hidden" name="id" value="${id}"><label class="field">Дата<input type="date" name="date" value="${linked?.date || selectedDate}" required></label><p class="muted">Это тот же шаг: отметка выполнения в дне и в цели общая.</p>`, 'step-date-form', 'Назначить');
+  else if (action === 'step-day' && linked) { selectedDate = linked.date; page = 'day'; closeDialog(); render(); window.scrollTo(0, 0); }
+  else if (action === 'step-delete') openDialog('Удалить шаг?', `<p class="dialog-intro">${esc(step.title)}${linked ? ' — задача в плане дня будет удалена вместе с этим шагом.' : ''} Прогресс цели пересчитается по оставшимся шагам.</p><div class="dialog-footer">${button('close-dialog', 'Отмена', '', 'btn btn-light')}${button('step-delete-confirm', 'Удалить', 'trash', 'btn btn-danger', `data-id="${id}"`)}</div>`);
+  else if (action === 'step-delete-confirm') {
+    if (linked) state.tasks = state.tasks.map(t => t.id === linked.id ? { id: t.id, deleted: true, updatedAt: stamp() } : t);
+    state.goalSteps = state.goalSteps.map(s => s.id === id ? { id, deleted: true, updatedAt: stamp() } : s);
+    refreshStepGoal(step.goalId); save(); showStepParent(step.goalId);
+  }
+}
+function submitStep(formId, values) {
+  const previous = visible('goalSteps').find(s => s.id === values.id);
+  if (formId === 'step-form') {
+    const g = goal(previous?.goalId || values.goalId), title = values.title.trim(); if (!g || !title) return;
+    const step = put('goalSteps', { id: previous?.id || uid(), title, notes: values.notes.trim(), goalId: g.id, done: previous ? stepDone(state, previous) : false });
+    const linked = visible('tasks').find(t => t.goalStepId === step.id);
+    if (linked) put('tasks', { ...linked, title: step.title, notes: step.notes });
+    showStepParent(g.id); toast('Шаг сохранён');
+  } else {
+    if (!previous || !goal(previous.goalId) || !validDate(values.date)) return;
+    const linked = visible('tasks').find(t => t.goalStepId === previous.id);
+    put('tasks', { id: linked?.id || 'step:' + previous.id, title: previous.title, notes: previous.notes, date: values.date, done: stepDone(state, previous), hot: linked?.hot || false, parentTaskId: '', goalId: previous.goalId, goalStepId: previous.id, profitable: false, effort: 1 });
+    showStepParent(previous.goalId); toast('Шаг добавлен в план дня');
+  }
+}
