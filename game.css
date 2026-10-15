@@ -1,0 +1,187 @@
+/* Adventure presentation. Game rules and API contracts live in adventure.js. */
+#retry-save{display:block;margin:8px auto;max-width:calc(100% - 32px)}
+:root {
+  --game-bg: #eef2f8;
+  --game-surface: #fff;
+  --game-raised: #e3e9f4;
+  --game-line: #c2ccdd;
+  --game-text: #283049;
+  --game-muted: #64718a;
+  --game-mint: #15785e;
+  --game-gold: #93631a;
+  --game-coral: #bd4960;
+  --game-lilac: #7054b8;
+  background: var(--game-bg);
+  color: var(--game-text);
+  font-family: 'Trebuchet MS', system-ui, sans-serif;
+}
+html[data-theme=dark] {
+  --game-bg: #151720;
+  --game-surface: #222532;
+  --game-raised: #2d3142;
+  --game-line: #41485d;
+  --game-text: #f0f1fa;
+  --game-muted: #abb4ce;
+  --game-mint: #8be0bd;
+  --game-gold: #ffce70;
+  --game-coral: #ff9fac;
+  --game-lilac: #c6adff;
+  background: var(--game-bg);
+  color: var(--game-text);
+}
+header {max-width:1080px; padding:24px 24px 12px;}
+.brand, [data-theme=dark] .brand {color:var(--game-text);font-size:23px;font-weight:900;}
+.brand::before {content:'✦'; color:var(--game-gold); margin-right:10px;font-size:30px;vertical-align:middle;}
+button, select, input, [data-theme=dark] button, [data-theme=dark] select, [data-theme=dark] input {
+  color:var(--game-text); background:var(--game-surface);border-color:var(--game-line);border-radius:8px;
+}
+button {font-weight:800;transition:background .15s,transform .15s,border-color .15s;}
+button:hover,[data-theme=dark] button:hover {background:var(--game-raised);}
+button:active {transform:translateY(2px);}
+button:focus-visible,summary:focus-visible {outline:3px solid var(--game-gold);outline-offset:4px;}
+button:disabled {opacity:.64;}
+#connection, [data-theme=dark] #connection {color:var(--game-muted);font-size:12px;text-align:right;max-width:1032px;margin:0 auto;padding:3px 0;}
+nav {max-width:1032px;margin:16px auto 0;padding:0;border-color:var(--game-line);gap:12px;}
+nav button, [data-theme=dark] nav button {border-radius:0;background:transparent;color:var(--game-muted);padding:14px 20px;border-bottom:3px solid transparent;}
+nav button[aria-current], [data-theme=dark] nav button[aria-current] {color:var(--game-gold);border-color:var(--game-gold);background:transparent;}
+nav button[data-view=hero][aria-current] {color:var(--game-lilac);border-color:var(--game-lilac);}
+nav button[data-view=family][aria-current] {color:var(--game-mint);border-color:var(--game-mint);}
+nav button[data-view=shop][aria-current] {color:var(--game-coral);border-color:var(--game-coral);}
+html[data-theme] nav button:not([aria-current]) {border-bottom-color:transparent;}
+main {max-width:1080px;padding:24px;}
+h1 {font-size:32px;font-weight:900;}
+h2 {font-size:22px;font-weight:850;margin-top:30px;}
+h3 {font-size:16px;line-height:1.4;}
+small,.muted,.stats span,footer,.empty,[data-theme=dark] small,[data-theme=dark] .muted,[data-theme=dark] .stats span,[data-theme=dark] footer,[data-theme=dark] .empty {color:var(--game-muted);}
+.intro, [data-theme=dark] .intro {grid-template-columns:minmax(0,1fr) minmax(300px,46%);gap:30px;min-height:350px;border-color:var(--game-line);padding-bottom:14px;}
+.intro h1 {font-size:46px;margin:14px 0 6px;}
+.hero-greeting {font-size:18px;font-weight:700;margin:0 0 20px;color:var(--game-muted);}
+.eyebrow,[data-theme=dark] .eyebrow {color:var(--game-mint);font-size:12px;line-height:1.5;}
+.role-mage .eyebrow {color:var(--game-lilac);}
+.role-builder .eyebrow {color:var(--game-coral);}
+.role-keeper .eyebrow {color:var(--game-gold);}
+.stats {gap:26px;margin:20px 0;}
+.stats strong {font-size:29px;line-height:1.2;font-weight:900;}
+.stats>div:nth-child(1) strong {color:var(--game-lilac);}
+.stats>div:nth-child(2) strong {color:var(--game-mint);}
+.stats>div:nth-child(3) strong {color:var(--game-gold);}
+.stats span {display:block;margin-top:5px;}
+.track,[data-theme=dark] .track {height:12px;background:var(--game-raised);border:2px solid var(--game-line);max-width:330px;}
+.track span,[data-theme=dark] .track span {background:#6fcfab;border-right:2px solid #c5ffe9;}
+.hero-stage, [data-theme=dark] .hero-stage {position:relative;display:grid;place-items:center;isolation:isolate;overflow:hidden;width:100%;height:350px;padding:0;border:0;background:transparent;cursor:pointer;}
+.hero-stage:hover,[data-theme=dark] .hero-stage:hover {background:transparent;}
+.hero-stage:active {transform:none;}
+.hero-stage .hero-art {width:100%;height:100%;max-width:330px;position:relative;filter:drop-shadow(0 10px 0 #00000016);}
+.hero-backdrop {position:absolute;width:125%;height:100%;inset:0 auto;z-index:-1;pointer-events:none;overflow:hidden;}
+.hero-reaction {position:absolute;right:5%;top:10%;padding:9px 12px;background:#ffce70;color:#283049;border:3px solid #293043;border-radius:8px;opacity:0;transform:rotate(8deg) scale(.8);pointer-events:none;}
+.cheering .hero-reaction {opacity:1;transform:rotate(8deg) scale(1);}
+.quest-list {gap:10px;}
+.quest, [data-theme=dark] .quest {border:1px solid var(--game-line);background:var(--game-surface);padding:14px 16px;gap:14px;min-height:86px;border-left:4px solid #78cbae;}
+.quest-list[data-kind=adventure] .quest {border-left-color:#bd9df3;}
+.quest-list[data-kind=goal] .quest {border-left-color:#f4bb61;}
+.quest small {margin-top:4px;color:var(--game-mint);font-weight:700;}
+.quest-emblem {width:40px;height:40px;display:grid;place-items:center;background:var(--game-raised);border-radius:8px;font-size:25px;color:var(--game-mint);flex-shrink:0;}
+.quest-list[data-kind=adventure] .quest-emblem {color:var(--game-lilac);}
+.quest-list[data-kind=goal] .quest-emblem {color:var(--game-gold);}
+.quest button, [data-theme=dark] .quest button {background:#6fcfab;color:#192a30;border:2px solid #96efc9;box-shadow:0 3px 0 #304a42;font-weight:900;}
+.quest.done,[data-theme=dark] .quest.done {background:var(--game-bg);border-color:var(--game-line);}
+.quest.done button,[data-theme=dark] .quest.done button {background:var(--game-raised);color:var(--game-mint);border-color:var(--game-line);box-shadow:none;}
+.quest.done .quest-emblem {opacity:.55;}
+.list-toggle,[data-theme=dark] .list-toggle {display:flex;justify-content:center;align-items:center;gap:10px;width:100%;margin:10px 0 20px;color:var(--game-muted);background:transparent;border:1px dashed var(--game-line);font-size:13px;}
+.list-toggle:hover,[data-theme=dark] .list-toggle:hover {color:var(--game-text);background:var(--game-raised);}
+.fold-chevron {font-size:20px;line-height:1;transition:transform .2s;}
+.list-toggle[aria-expanded=true] .fold-chevron {transform:rotate(180deg);}
+.options {gap:12px;}
+.options button {border-width:2px;box-shadow:0 3px 0 #00000012;}
+.options button[aria-pressed=true],[data-theme=dark] .options button[aria-pressed=true] {color:var(--game-text);background:var(--game-raised);border-color:var(--game-mint);}
+.hero-choices {grid-template-columns:repeat(3,minmax(0,1fr));}
+.hero-choices button {padding:10px 6px 18px;position:relative;font-size:16px;}
+.hero-choices .hero-art {height:180px;max-width:210px;margin:auto;}
+.hero-choices button[aria-pressed=true]::after {content:'✓';position:absolute;top:10px;right:10px;background:var(--game-mint);color:var(--game-bg);width:26px;height:26px;border-radius:50%;display:grid;place-items:center;}
+.options button small {font-size:12px;line-height:1.4;}
+.hero-choices button:nth-child(2) {border-top-color:var(--game-lilac);}
+.hero-choices button:nth-child(3) {border-top-color:var(--game-coral);}
+.hero-choices button:nth-child(4) {border-top-color:var(--game-gold);}
+.split {gap:24px;}
+.scene {max-height:400px;border-radius:8px;}
+.family-row,.event,[data-theme=dark] .family-row,[data-theme=dark] .event {border-color:var(--game-line);}
+.event {align-items:flex-start;}
+.event small {white-space:normal;}
+.milestones {margin-top:18px;color:var(--game-muted);}
+.milestones .reached,[data-theme=dark] .milestones .reached {color:var(--game-mint);}
+.shop-grid {grid-template-columns:repeat(3,minmax(0,1fr));}
+.item,[data-theme=dark] .item {background:var(--game-surface);border-color:var(--game-line);border-top:4px solid #e4b363;display:flex;flex-direction:column;align-items:flex-start;}
+.item:nth-child(3n+2) {border-top-color:#ed94a6;}
+.item:nth-child(3n+3) {border-top-color:#a591df;}
+.item h2 {font-size:20px;margin:14px 0 0;overflow-wrap:anywhere;}
+.item button {margin-top:auto;}
+.reward-icon {font-size:42px;min-height:54px;}
+.primary,[data-theme=dark] .primary,.period button[aria-pressed=true],[data-theme=dark] .period button[aria-pressed=true] {background:#6fcfab;color:#182b30;border-color:#94edc6;}
+.bar,[data-theme=dark] .bar {background:#9d8bda;}
+dialog,[data-theme=dark] dialog {background:var(--game-surface);color:var(--game-text);border:2px solid var(--game-line);}
+#toast {background:#ffcf70;color:#283049;border:2px solid #8e713c;font-weight:800;box-shadow:0 6px 24px #0004;}
+footer {max-width:1080px;}
+@media(prefers-reduced-motion:no-preference) {
+  .hero-stage .hero-body {animation:hero-breathe 4s ease-in-out infinite;transform-origin:180px 350px;}
+  .hero-stage .hero-eyes {animation:hero-blink 6s infinite;transform-origin:175px 133px;}
+  .hero-stage .magic-gem,.hero-stage .floating-book {animation:hero-float 3s ease-in-out infinite;}
+  .hero-stage .hero-lantern {animation:hero-swing 4s ease-in-out infinite;transform-origin:272px 245px;}
+  .hero-stage .hero-cape {animation:cape-sway 5s ease-in-out infinite;transform-origin:177px 190px;}
+  .hero-stage:hover .hero-hand,.hero-stage.cheering .hero-hand {animation:hero-wave .5s ease-in-out 3;transform-origin:136px 210px;}
+  .hero-stage.cheering .hero-body {animation:hero-celebrate .6s ease-in-out 2;}
+  .hero-reaction {transition:opacity .15s,transform .15s;}
+  .quest.done {animation:quest-flash .5s ease-out;}
+  @keyframes hero-breathe {50% {transform:translateY(-5px) rotate(1deg);}}
+  @keyframes hero-blink {0%,43%,47%,100%{transform:scaleY(1)}45%{transform:scaleY(.08)}}
+  @keyframes hero-float {50%{transform:translateY(-7px) rotate(2deg)}}
+  @keyframes hero-swing {50%{transform:rotate(-6deg)}}
+  @keyframes cape-sway {50%{transform:skewX(2deg)}}
+  @keyframes hero-wave {50%{transform:rotate(12deg)}}
+  @keyframes hero-celebrate {50%{transform:translateY(-16px) rotate(-3deg)}}
+  @keyframes quest-flash {0%{border-color:#a2eccb}100%{border-color:var(--game-line)}}
+}
+@media(max-width:700px) {
+  header {padding:16px 16px 8px;gap:8px;}
+  .brand,[data-theme=dark] .brand {font-size:20px;}
+  .brand::before {font-size:25px;}
+  #connection {padding:6px 16px;font-size:11px;}
+  nav {margin:8px 12px 0;gap:0;display:grid;grid-template-columns:repeat(5,minmax(0,1fr));}
+  nav button,[data-theme=dark] nav button {font-size:12px;padding:12px 3px;white-space:normal;overflow-wrap:anywhere;}
+  main {padding:18px 16px;}
+  .intro,[data-theme=dark] .intro {grid-template-columns:minmax(0,1fr) 46%;gap:0;min-height:270px;padding-bottom:16px;}
+  .intro h1 {font-size:32px;margin:10px 0 6px;}
+  .hero-greeting {font-size:14px;line-height:1.4;margin-bottom:14px;}
+  .eyebrow {font-size:10px;}
+  .hero-stage,[data-theme=dark] .hero-stage {height:255px;}
+  .hero-stage .hero-art {width:116%;max-width:none;}
+  .hero-backdrop {width:112%;}
+  .hero-reaction {right:0;top:4%;font-size:12px;padding:5px;}
+  .stats {gap:12px;margin:16px 0;}
+  .stats strong {font-size:22px;}
+  .stats span {font-size:10px;}
+  .next {font-size:11px;line-height:1.5;}
+  h2 {font-size:20px;margin-top:25px;}
+  .quest,[data-theme=dark] .quest {padding:12px 10px;gap:10px;min-height:90px;}
+  .quest-emblem {width:32px;height:36px;font-size:23px;}
+  .quest h3 {font-size:14px;}
+  .quest small {font-size:11px;}
+  .quest button {width:40px;min-height:42px;}
+  .hero-choices {gap:7px;grid-template-columns:repeat(3,minmax(0,1fr));}
+  .hero-choices button {font-size:12px;padding:8px 2px 12px;}
+  .hero-choices .hero-art {height:125px;}
+  .hero-choices button[aria-pressed=true]::after {width:20px;height:20px;top:4px;right:4px;font-size:12px;}
+  .options {gap:7px;}
+  .shop-grid {grid-template-columns:1fr;}
+  .item {display:grid;grid-template-columns:55px minmax(0,1fr) auto;column-gap:12px;padding:16px;align-items:center;}
+  .item .reward-icon {grid-row:1/3;font-size:35px;}
+  .item h2 {font-size:17px;grid-column:2/4;margin:0;}
+  .item p {font-size:12px;grid-column:2;margin:7px 0;}
+  .item button {grid-column:3;font-size:12px;padding:8px 10px;}
+  .item h3 {grid-column:1/4;}
+  .item:has(h3) p {grid-column:1/3;}
+  .event {font-size:13px;gap:8px;flex-wrap:wrap;}
+  .event small {font-size:11px;}
+}
+@media(prefers-reduced-motion:reduce) {
+  *,*::before,*::after {animation:none!important;transition:none!important;scroll-behavior:auto!important;}
+}
