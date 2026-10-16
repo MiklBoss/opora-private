@@ -1,32 +1,22 @@
-<!DOCTYPE html>
-<html lang="uk" data-theme="dark">
+<!doctype html>
+<html lang="ru">
 <head>
-  <meta charset="utf-8">
+  <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="theme-color" content="#174b42">
-  <script>try { document.documentElement.dataset.theme = localStorage.getItem('fq-theme') === 'light' ? 'light' : 'dark'; } catch {}</script>
-  <meta name="apple-mobile-web-app-capable" content="yes">
-  <title>Сімейний квест</title>
-  <link rel="manifest" href="manifest.webmanifest">
-  <link rel="icon" href="icon.svg" type="image/svg+xml">
-  <link rel="apple-touch-icon" href="icon-192.png">
-  <link rel="stylesheet" href="adventure.css">
-  <link rel="stylesheet" href="game.css">
-  <script src="config.js" defer></script>
-  <script src="demo.js" defer></script>
-  <script src="hero-art.js" defer></script>
-  <script src="adventure.js" defer></script>
+  <meta name="theme-color" content="#314d40">
+  <meta name="description" content="Опора — спокойное пространство для целей, планов и одного важного шага сегодня.">
+  <title>Опора — пространство для важного</title>
+  <script>try{const t=localStorage.getItem('opora.theme');document.documentElement.dataset.theme=t==='dark'?'dark':'light'}catch{document.documentElement.dataset.theme='light'}document.querySelector('meta[name="theme-color"]').content=document.documentElement.dataset.theme==='dark'?'#101c1d':'#314d40'</script>
+  <link rel="icon" href="./icon.svg" type="image/svg+xml">
+  <link rel="apple-touch-icon" href="./icon-192.png">
+  <link rel="manifest" href="./manifest.webmanifest">
+  <link rel="stylesheet" href="./styles.css?v=14">
+  <script type="module" src="./app.js?v=14"></script>
 </head>
 <body>
-  <header><a class="brand" href="./">Сімейний квест</a><div class="account"><label class="sr-only" for="profile">Мій профіль</label><select id="profile"><option value="a">Ангеліна</option><option value="s">Світлана</option><option value="m">Мама</option><option value="p">Тато</option></select><button id="theme" title="Світла тема" aria-label="Світла тема">☀</button><button id="refresh" title="Оновити" aria-label="Оновити">↻</button></div></header>
-  <div id="connection" role="status">Завантажуємо пригоду…</div>
-  <button id="retry-save" type="button" hidden>Повторити збереження</button>
-  <nav aria-label="Розділи"><button data-view="today" aria-current="page">Сьогодні</button><button data-view="hero">Герой</button><button data-view="history">Мій шлях</button><button data-view="family">Родина</button><button data-view="shop">Крамниця</button></nav>
-  <main id="main" aria-live="polite"></main>
-  <footer><button id="install" hidden>Встановити гру</button><span id="install-note"></span></footer>
-  <dialog id="login"><form id="login-form"><h2>Твій секретний код</h2><p id="login-name"></p><label for="pin">PIN</label><input id="pin" type="password" inputmode="numeric" pattern="[0-9]{4}" maxlength="4" required autocomplete="off"><p id="login-error" role="alert"></p><div class="dialog-actions"><button type="button" id="cancel-login">Скасувати</button><button class="primary" type="submit">Увійти</button></div></form></dialog>
-  <dialog id="confirm"><h2 id="confirm-title"></h2><p id="confirm-copy"></p><div class="dialog-actions"><button id="cancel-confirm">Скасувати</button><button id="accept-confirm" class="primary">Підтвердити</button></div></dialog>
-  <dialog id="outing"><h2 id="outing-title"></h2><p id="outing-price"></p><fieldset id="outing-people"><legend>Хто бере участь?</legend></fieldset><label id="outing-planned-label" class="participant"><input type="checkbox" id="outing-planned">Заплановано батьками · без монет</label><p id="outing-total"></p><p id="outing-error" role="alert"></p><div class="dialog-actions"><button id="outing-cancel">Скасувати</button><button id="outing-accept" class="primary">Підтвердити</button></div></dialog>
-  <div id="toast" role="status"></div>
+  <div id="app"></div>
+  <dialog id="dialog"></dialog>
+  <div id="toast" role="status" aria-live="polite"></div>
+  <noscript>Для работы планировщика нужно включить JavaScript.</noscript>
 </body>
 </html>
