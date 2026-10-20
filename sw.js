@@ -1,5 +1,5 @@
-const CACHE = 'opora-v15';
-const FILES = ['./', './index.html', './styles.css?v=15', './app.js?v=15', './core.js?v=15', './game.js?v=15', './icon.svg', './icon-192.png', './icon-512.png', './manifest.webmanifest'];
+const CACHE = 'opora-v14';
+const FILES = ['./', './index.html', './styles.css?v=14', './app.js?v=14', './core.js?v=14', './game.js?v=14', './icon.svg', './icon-192.png', './icon-512.png', './manifest.webmanifest'];
 self.addEventListener('install', event => {
   event.waitUntil(caches.open(CACHE).then(cache => cache.addAll(FILES).then(() => self.skipWaiting())));
 });

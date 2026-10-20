@@ -119,8 +119,7 @@ export function validateState(input) {
         return { ...text, ...game, level: record.level, period: record.period, parentId: record.parentId || '', progress: record.progress };
       }
       if (!['inbox', 'later', 'archived'].includes(record.status)) throw new Error('Неверный формат мысли.');
-      if (record.marked !== undefined && typeof record.marked !== 'boolean') throw new Error('Неверный формат отметки мысли.');
-      return { ...text, status: record.status, marked: record.marked === true };
+      return { ...text, status: record.status };
     });
   }
   return result;
