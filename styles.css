@@ -380,3 +380,32 @@ html[data-theme="dark"] .focus-screen{background:#101c1d}
 /* Subgoals are optional, visible directly in the goal card. */
 .goal-steps{margin:18px 0;padding-top:14px;border-top:1px solid var(--line,#cdd7c6)}.goal-steps h3{font-size:16px;margin:0}.goal-steps h3 small{font-weight:400;color:var(--muted,#687860);margin-left:6px}.goal-steps .detail-heading{margin:0 0 10px;gap:8px;flex-wrap:wrap}.goal-step{display:flex;align-items:flex-start;gap:10px;padding:12px 0;border-top:1px solid var(--line,#d9e0d2)}.goal-step:first-child{border-top:0}.goal-step-main{flex:1;min-width:0}.goal-step-title{border:0;background:transparent;color:inherit;text-align:left;font:inherit;font-weight:600;padding:0;cursor:pointer;overflow-wrap:anywhere}.goal-step.done .goal-step-title{text-decoration:line-through;opacity:.65}.goal-step-main>small{display:block;white-space:pre-wrap;overflow-wrap:anywhere;margin-top:4px;color:var(--muted,#6a7865)}.goal-step-actions{display:flex;flex-wrap:wrap;gap:5px 12px;margin-top:8px}.goal-step-actions .text-button{font-size:13px}.step-help{font-size:12px;line-height:1.5;color:var(--muted,#6a7865);margin-bottom:0}.goal-progress:disabled{opacity:.85;cursor:default}
 :root[data-theme="dark"] .goal-steps,:root[data-theme="dark"] .goal-step{border-color:#3d504a}:root[data-theme="dark"] .goal-step-main>small,:root[data-theme="dark"] .step-help,:root[data-theme="dark"] .goal-steps h3 small{color:#bac9be}
+
+/* All thoughts: compact list with independent saved marks. */
+.inbox-toolbar .tabs{flex-wrap:wrap}
+.idea-list-hint{line-height:1.6;margin:0 0 14px}
+.idea-checklist{list-style:none;margin:0;padding:0;border:1px solid #c5d0bf;border-radius:12px;overflow:hidden}
+.idea-list-row{display:flex;align-items:flex-start;gap:8px;padding:5px 12px;background:#fff}
+.idea-list-row+.idea-list-row{border-top:1px solid #dfe5d6}
+.idea-mark{display:flex;align-items:center;justify-content:center;flex:0 0 44px;min-height:44px;cursor:pointer}
+.idea-mark input{width:22px;height:22px;margin:0;accent-color:#486944;cursor:pointer}
+.idea-mark input:focus-visible{outline:2px solid #486944;outline-offset:4px}
+.idea-list-detail{flex:1;min-width:0}
+.idea-list-detail summary{cursor:pointer;padding:12px 0;line-height:1.5;overflow-wrap:anywhere}
+.idea-list-title{font-weight:600;white-space:pre-wrap}
+.idea-list-status{display:inline-block;font-size:12px;padding:2px 8px;margin-left:10px;border:1px solid #c5d0bf;border-radius:20px;vertical-align:middle}
+.idea-list-body{padding:0 0 12px}
+.idea-list-body p{white-space:pre-wrap;overflow-wrap:anywhere;line-height:1.6;margin:0 0 12px}
+.idea-list-body .idea-actions{flex-wrap:wrap}
+.idea-list-row.is-marked{background:#edf3e7}
+html[data-theme="dark"] .idea-checklist,html[data-theme="dark"] .idea-list-row,html[data-theme="dark"] .idea-list-status{border-color:#455c52}
+html[data-theme="dark"] .idea-list-row{background:#1b2c2b}
+html[data-theme="dark"] .idea-list-row.is-marked{background:#2c4335}
+@media(max-width:650px){.idea-list-row{padding:4px 8px;gap:3px}.idea-list-status{margin-left:5px}.idea-list-detail summary{font-size:15px}}
+
+/* Keep dates intact, including narrow screens and enlarged text. */
+.week-day>span,.week-day>b{white-space:nowrap;overflow-wrap:normal;word-break:normal;flex-shrink:0}
+@media(max-width:650px){
+  .week-strip{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));width:100%;gap:4px}
+  .week-strip .week-day{width:100%;min-width:0;padding:6px 0;height:auto;min-height:70px}
+}
